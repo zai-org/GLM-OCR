@@ -6,7 +6,7 @@
 <p align="center">
     👋 Join our <a href="resources/WECHAT.md" target="_blank">WeChat</a> and <a href="https://discord.gg/8KFjEec7" target="_blank">Discord</a> community
     <br>
-    📍 Use GLM-OCR's <a href="https://docs.z.ai/guides/image/glm-ocr" target="_blank">API</a>
+    📍 Use GLM-OCR's <a href="https://docs.z.ai/guides/vlm/glm-ocr" target="_blank">API</a>
 </p>
 
 ### Model Introduction
@@ -15,17 +15,13 @@ GLM-OCR is a multimodal OCR model for complex document understanding, built on t
 
 **Key Features**
 
-- State-of-the-Art Performance
-Achieves 94.62 on OmniDocBench V1.5, ranking #1, and delivers SOTA results across major document understanding benchmarks, including formula recognition, table recognition, and information extraction.
+- **State-of-the-Art Performance**: Achieves a score of 94.62 on OmniDocBench V1.5, ranking #1 overall, and delivers state-of-the-art results across major document understanding benchmarks, including formula recognition, table recognition, and information extraction.
 
-- Optimized for Real-World Scenarios
-Specifically optimized for practical business use cases, maintaining stable and accurate performance on complex tables, code documents, seals, and other challenging layouts.
+- **Optimized for Real-World Scenarios**: Designed and optimized for practical business use cases, maintaining robust performance on complex tables, code-heavy documents, seals, and other challenging real-world layouts.
 
-- Efficient Inference
-With only 0.9B parameters, GLM-OCR supports deployment via vLLM and SGLang, significantly reducing inference latency and compute cost—well suited for high-concurrency and edge deployments.
+- **Efficient Inference**: With only 0.9B parameters, GLM-OCR supports deployment via vLLM, SGLang, and Ollama, significantly reducing inference latency and compute cost, making it ideal for high-concurrency services and edge deployments.
 
-- Easy to Use
-Fully open-sourced with a complete SDK and inference toolchain, enabling one-line invocation and seamless integration into existing systems.
+- **Easy to Use**: Fully open-sourced and equipped with a comprehensive [SDK](https://github.com/zai-org/GLM-OCR) and inference toolchain, offering simple installation, one-line invocation, and smooth integration into existing production pipelines.
 
 ### Download Model
 
@@ -60,7 +56,7 @@ Two ways to run a GLM-OCR model service:
 
 No GPU needed – use the hosted API:
 
-1. Get an API key from https://open.bigmodel.cn/
+1. Get an API key from https://open.bigmodel.cn
 2. Configure `config.yaml`:
 
 ```yaml
@@ -78,7 +74,7 @@ You can use vLLM or SGLang to deploy an OpenAI-compatible service:
 
 ##### Using vLLM
 
-**Install vLLM:**
+Install vLLM:
 
 ```bash
 pip install -U vllm --extra-index-url https://wheels.vllm.ai/nightly
@@ -86,7 +82,7 @@ pip install -U vllm --extra-index-url https://wheels.vllm.ai/nightly
 docker pull vllm/vllm-openai:nightly
 ```
 
-**Launch the service:**
+Launch the service:
 
 ```bash
 pip install git+https://github.com/huggingface/transformers.git
@@ -95,7 +91,7 @@ vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080
 
 ##### Using SGLang
 
-**Install SGLang:**
+Install SGLang:
 
 ```bash
 docker pull lmsysorg/sglang:dev
@@ -103,7 +99,7 @@ docker pull lmsysorg/sglang:dev
 pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 ```
 
-**Launch the service:**
+Launch the service:
 
 ```bash
 pip install git+https://github.com/huggingface/transformers.git

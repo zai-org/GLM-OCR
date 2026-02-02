@@ -6,27 +6,23 @@
 <p align="center">
     👋 加入我们的 <a href="resources/WECHAT.md" target="_blank">微信群</a>
     <br>
-    📍 使用 GLM-OCR 的 <a href="https://docs.z.ai/guides/image/glm-ocr" target="_blank">API</a>
+    📍 使用 GLM-OCR 的 <a href="https://docs.bigmodel.cn/cn/guide/models/vlm/glm-ocr" target="_blank">API</a>
 </p>
 
 
 ### 模型介绍
 
-GLM-OCR 是面向复杂文档理解的多模态 OCR 模型，基于 GLM-V 编解码架构构建。它引入 Multi-Token Prediction（MTP）损失与稳定的全任务强化学习，以提升训练效率、识别准确率与泛化能力。模型融合了在大规模图文数据上预训练的 CogViT 视觉编码器、具备高效 token 下采样能力的轻量跨模态连接器，以及 GLM-0.5B 语言解码器。配合基于 PP-DocLayout-V3 的两阶段流程（版面分析 + 并行识别），GLM-OCR 能在多种文档版式场景下提供稳定且高质量的 OCR 结果。
+GLM-OCR 是一款面向复杂文档理解的多模态 OCR 模型，基于 GLM-V 编码器—解码器架构构建。它引入 Multi-Token Prediction（MTP）损失与稳定的全任务强化学习训练策略，以提升训练效率、识别精度与泛化能力。模型集成了在大规模图文数据上预训练的 CogViT 视觉编码器、带高效 token 下采样的轻量跨模态连接器，以及 GLM-0.5B 语言解码器。结合基于 PP-DocLayout-V3 的“两阶段”流程——先做版面分析，再进行并行识别——GLM-OCR 能在多样化文档布局下提供稳健且高质量的 OCR 表现。
 
-**主要特性**
+关键特性
 
-- 业界领先的效果
-在 OmniDocBench V1.5 上达到 94.62，排名 #1；并在主流文档理解基准上取得 SOTA 表现，包括公式识别、表格识别与信息抽取等任务。
+- 业界领先的效果：在 OmniDocBench V1.5 上取得 94.62 分，综合排名第一；并在公式识别、表格识别、信息抽取等主流文档理解基准上达到 SOTA 水平。
 
-- 面向真实业务场景优化
-针对实际业务用例做了专项优化，在复杂表格、代码文档、印章等挑战性场景下也能保持稳定且准确的性能。
+- 面向真实场景优化：针对实际业务需求进行设计与优化，在复杂表格、代码密集文档、印章等各类真实且高难版面场景中依然保持稳定表现。
 
-- 高效推理
-仅 0.9B 参数，支持通过 vLLM 与 SGLang 部署，显著降低推理延迟与算力成本，适用于高并发与边缘部署。
+- 高效推理：总参数量仅 0.9B，支持通过 vLLM、SGLang 与 Ollama 部署，显著降低推理时延与算力成本，适用于高并发服务与端侧部署。
 
-- 易用
-完整开源，提供配套 SDK 与推理工具链，支持一行命令调用，易于集成到现有系统。
+- 上手简单：全面开源，并提供完整 [SDK](https://github.com/zai-org/GLM-OCR) 与推理工具链，支持便捷安装、一行调用、以及与现有生产流程的顺滑集成。
 
 ### 下载模型
 
@@ -60,7 +56,7 @@ pip install git+https://github.com/huggingface/transformers.git
 
 无需 GPU，直接使用托管 API：
 
-1. 在 https://open.bigmodel.cn/ 获取 API Key
+1. 在 https://open.bigmodel.cn 获取 API Key
 2. 配置 `config.yaml`：
 
 ```yaml
@@ -78,7 +74,7 @@ pipeline:
 
 ##### 使用 vLLM
 
-**安装 vLLM：**
+安装 vLLM：
 
 ```bash
 pip install -U vllm --extra-index-url https://wheels.vllm.ai/nightly
@@ -86,7 +82,7 @@ pip install -U vllm --extra-index-url https://wheels.vllm.ai/nightly
 docker pull vllm/vllm-openai:nightly
 ```
 
-**启动服务：**
+启动服务：
 
 ```bash
 pip install git+https://github.com/huggingface/transformers.git
@@ -95,7 +91,7 @@ vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080
 
 ##### 使用 SGLang
 
-**安装 SGLang：**
+安装 SGLang：
 
 ```bash
 docker pull lmsysorg/sglang:dev
@@ -103,7 +99,7 @@ docker pull lmsysorg/sglang:dev
 pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 ```
 
-**启动服务：**
+启动服务：
 
 ```bash
 pip install git+https://github.com/huggingface/transformers.git
