@@ -48,6 +48,10 @@ class OCRApiConfig(_BaseConfig):
         default_factory=lambda: [429, 500, 502, 503, 504]
     )
 
+    # HTTP connection pool size. Should be >= pipeline max_workers to avoid
+    # "Connection pool is full" when layout mode runs concurrent requests. Default 128.
+    connection_pool_size: Optional[int] = 128
+
 
 class PageLoaderConfig(_BaseConfig):
     max_tokens: int = 16384

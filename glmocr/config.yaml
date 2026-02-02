@@ -48,6 +48,10 @@ pipeline:
     retry_jitter_ratio: 0.2
     retry_status_codes: [429, 500, 502, 503, 504]
 
+    # HTTP connection pool size (default 128). Set >= max_workers to avoid
+    # "Connection pool is full" when layout mode runs concurrent requests.
+    connection_pool_size: 128
+
   # Maximum parallel workers for region recognition (layout mode)
   # Lower values to reduce 503 errors on busy OCR servers
   max_workers: 32

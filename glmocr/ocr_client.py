@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Dict, Tuple, Optional
 from urllib.parse import urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
 
 from glmocr.utils.logging import get_logger, get_profiler
 
@@ -87,8 +88,24 @@ class OCRClient:
         # Requests session (connection pooling)
         self._session: Optional[requests.Session] = None
 
+        # Connection pool size (from config, or default). Should be >= pipeline max_workers.
+        pool_size = getattr(config, "connection_pool_size", None)
+        self._pool_maxsize = pool_size if pool_size is not None else 128
+
         # Model information
         self.model = None
+
+    def _make_session(self) -> requests.Session:
+        """Create a Session with a larger connection pool for concurrent use."""
+        session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=1,  # single API host
+            pool_maxsize=self._pool_maxsize,
+            max_retries=0,
+        )
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
 
     def start(self):
         """Check whether the remote API service is available."""
@@ -97,7 +114,7 @@ class OCRClient:
         logger.debug("Successfully connected to remote API server!")
 
         if self._session is None:
-            self._session = requests.Session()
+            self._session = self._make_session()
 
     def stop(self):
         """No-op: this client does not manage server lifecycle."""
@@ -217,7 +234,7 @@ class OCRClient:
             (response_dict, http_status_code)
         """
         if self._session is None:
-            self._session = requests.Session()
+            self._session = self._make_session()
 
         headers = {"Content-Type": "application/json", **self.extra_headers}
         if self.api_key:
