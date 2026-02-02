@@ -17,6 +17,11 @@ from .visualization_utils import (
     save_layout_visualization,
     get_colormap,
 )
+from .result_postprocess_utils import (
+    find_consecutive_repeat,
+    clean_repeated_content,
+    clean_formula_number,
+)
 
 __all__ = [
     "smart_resize",
@@ -32,4 +37,7 @@ __all__ = [
     "draw_layout_boxes",
     "save_layout_visualization",
     "get_colormap",
+    "find_consecutive_repeat",
+    "clean_repeated_content",
+    "clean_formula_number",
 ]

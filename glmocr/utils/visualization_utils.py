@@ -129,7 +129,7 @@ def get_default_font(font_size: int = 20) -> ImageFont.FreeTypeFont:
         # Get the path to the assets folder relative to this file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(current_dir))
-        custom_font_path = os.path.join(project_root, "resources", "PingFang.ttf")
+        custom_font_path = os.path.join(project_root, "assets", "PingFang.ttf")
 
         if os.path.exists(custom_font_path):
             return ImageFont.truetype(custom_font_path, font_size, encoding="utf-8")
@@ -269,16 +269,14 @@ def draw_layout_boxes(
                     [(xmin, ymin), (xmin + tw + 4, ymin + th + 1)], fill=color
                 )
                 if font is not None:
-                    draw.text((xmin + 2, ymin - 2), text, fill=font_color, font=font)
+                    draw.text((xmin + 2, ymin + 2), text, fill=font_color, font=font)
             else:
                 # Draw above the bbox
                 draw.rectangle(
                     [(xmin, ymin - th), (xmin + tw + 4, ymin + 1)], fill=color
                 )
                 if font is not None:
-                    draw.text(
-                        (xmin + 2, ymin - th - 2), text, fill=font_color, font=font
-                    )
+                    draw.text((xmin + 2, ymin - th), text, fill=font_color, font=font)
 
         # Draw index number on the right side
         if show_index:

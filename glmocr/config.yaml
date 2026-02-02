@@ -120,6 +120,7 @@ pipeline:
         - vertical_text
         - vision_footnote
         - seal
+        - formula_number
 
   # Enable layout detection mode
   # - true: detect document regions (tables, figures, text blocks) then OCR each
@@ -198,6 +199,7 @@ pipeline:
         - vertical_text
         - vision_footnote
         - seal
+        - formula_number
       table:
         - table
       formula:
@@ -215,7 +217,6 @@ pipeline:
         - reference
         - footer_image
         - header_image
-        - formula_number
 
     # Map label index to label name
     id2label:

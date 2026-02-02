@@ -17,10 +17,13 @@ import json
 from copy import deepcopy
 from wordfreq import zipf_frequency
 from typing import TYPE_CHECKING, List, Dict, Tuple, Any
-from collections import Counter
 
 from glmocr.postprocess.base_post_processor import BasePostProcessor
 from glmocr.utils.logging import get_logger, get_profiler
+from glmocr.utils.result_postprocess_utils import (
+    clean_repeated_content,
+    clean_formula_number,
+)
 
 if TYPE_CHECKING:
     from glmocr.config import ResultFormatterConfig
@@ -176,6 +179,9 @@ class ResultFormatter(BasePostProcessor):
 
                     json_page_results.append(result)
 
+                # Merge formula with formula_number
+                json_page_results = self._merge_formula_numbers(json_page_results)
+
                 # Merge hyphenated text blocks
                 json_page_results = self._merge_text_blocks(json_page_results)
 
@@ -226,7 +232,7 @@ class ResultFormatter(BasePostProcessor):
 
         # Remove repeated substrings (for long content)
         if len(content) >= 2048:
-            content = self._clean_repeated_content(content)
+            content = clean_repeated_content(content)
 
         return content.strip()
 
@@ -255,10 +261,13 @@ class ResultFormatter(BasePostProcessor):
                 content = content[2:-2].strip()
                 content = "$$\n" + content + "\n$$"
             elif content.startswith("\\[") and content.endswith("\\]"):
-                content = content[1:-1].strip()
+                content = content[2:-2].strip()
+                content = "$$\n" + content + "\n$$"
+            elif content.startswith("\\(") and content.endswith("\\)"):
+                content = content[2:-2].strip()
                 content = "$$\n" + content + "\n$$"
             else:
-                content = content
+                content = "$$\n" + content + "\n$$"
 
         # Text formatting
         if label == "text":
@@ -270,24 +279,18 @@ class ResultFormatter(BasePostProcessor):
             ):
                 content = "- " + content[1:].lstrip()
 
-            # Numbered list: 1. 1) 1）
-            match = re.match(r"^(\d+)(\.|\)|\）)(.*)$", content)
+            # Allow multiple digits for numbers, single letter for alphabetic
+            match = re.match(r"^(\(|\（)(\d+|[A-Za-z])(\)|\）)(.*)$", content)
             if match:
-                num, sep, rest = match.groups()
+                _, symbol, _, rest = match.groups()
+                content = f"({symbol}) {rest.lstrip()}"
+
+            # Allow multiple digits for numbers, single letter for alphabetic
+            match = re.match(r"^(\d+|[A-Za-z])(\.|\)|\）)(.*)$", content)
+            if match:
+                symbol, sep, rest = match.groups()
                 sep = ")" if sep == "）" else sep
-                content = f"{num}{sep} {rest.lstrip()}"
-
-            # Parenthesized numbers: (1) （1）
-            match = re.match(r"^(\(|\（)(\d+)(\)|\）)(.*)$", content)
-            if match:
-                _, num, _, rest = match.groups()
-                content = f"({num}) {rest.lstrip()}"
-
-            # Lettered list: A. B.
-            match = re.match(r"^([A-Z])\.(.*)$", content)
-            if match:
-                letter, rest = match.groups()
-                content = f"{letter}. {rest.lstrip()}"
+                content = f"{symbol}{sep} {rest.lstrip()}"
 
             # Replace single newlines with double newlines
             content = re.sub(r"(?<!\n)\n(?!\n)", "\n\n", content)
@@ -305,79 +308,6 @@ class ResultFormatter(BasePostProcessor):
         if label in self.label_visualization_mapping.get("formula", []):
             return "formula"
         return label
-
-    def _find_consecutive_repeat(
-        self, s: str, min_unit_len: int = 10, min_repeats: int = 10
-    ) -> str:
-        """Find and remove consecutive repeated patterns."""
-        n = len(s)
-        if n < min_unit_len * min_repeats:
-            return None
-
-        # Dynamically calculate max_unit_len
-        max_unit_len = n // min_repeats
-        if max_unit_len < min_unit_len:
-            return None
-
-        # Use DOTALL mode to match newlines
-        pattern = re.compile(
-            r"(.{"
-            + str(min_unit_len)
-            + ","
-            + str(max_unit_len)
-            + r"}?)\1{"
-            + str(min_repeats - 1)
-            + ",}",
-            re.DOTALL,
-        )
-        match = pattern.search(s)
-        if match:
-            return s[: match.start()] + match.group(1)
-        return None
-
-    def _clean_repeated_content(
-        self,
-        content: str,
-        min_len: int = 10,
-        min_repeats: int = 10,
-        line_threshold: int = 10,
-    ) -> str:
-        """Remove repeated content (both consecutive and line-level)."""
-        stripped_content = content.strip()
-        if not stripped_content:
-            return content
-
-        # 1. Consecutive repeat detection (supports multi-line patterns)
-        if len(stripped_content) > min_len * min_repeats:
-            result = self._find_consecutive_repeat(
-                stripped_content, min_unit_len=min_len, min_repeats=min_repeats
-            )
-            if result is not None:
-                return result
-
-        # 2. Line-level repeat detection
-        lines = [line.strip() for line in content.split("\n") if line.strip()]
-        total_lines = len(lines)
-        if total_lines >= line_threshold and lines:
-            common, count = Counter(lines).most_common(1)[0]
-            if count >= line_threshold and (count / total_lines) >= 0.8:
-                for i, line in enumerate(lines):
-                    if line == common:
-                        consecutive = sum(
-                            1
-                            for j in range(i, min(i + 3, len(lines)))
-                            if lines[j] == common
-                        )
-                        if consecutive >= 3:
-                            original_lines = content.split("\n")
-                            non_empty_count = 0
-                            for idx, orig_line in enumerate(original_lines):
-                                if orig_line.strip():
-                                    non_empty_count += 1
-                                    if non_empty_count == i + 1:
-                                        return "\n".join(original_lines[: idx + 1])
-                            break
-        return content
 
     # =========================================================================
     # Text block processing
@@ -512,3 +442,93 @@ class ResultFormatter(BasePostProcessor):
                 current_block["content"] = "- " + current_content
 
         return json_page_results
+
+    def _merge_formula_numbers(self, json_page_results: List[Dict]) -> List[Dict]:
+        """Merge formula_number into adjacent formula block using \\tag{}.
+
+        Handles two cases:
+        1. formula followed by formula_number: formula -> formula_number
+        2. formula_number followed by formula: formula_number -> formula
+
+        Example:
+            formula: "$$E = mc^2$$"
+            formula_number: "(1)"
+            merged: "$$E = mc^2 \\tag{1}$$"
+        """
+        if not json_page_results:
+            return json_page_results
+
+        merged_results = []
+        skip_indices = set()
+
+        for i, block in enumerate(json_page_results):
+            if i in skip_indices:
+                continue
+
+            native_label = block.get("native_label", "")
+
+            # Case 1: formula_number followed by formula
+            if native_label == "formula_number":
+                # Look for the next block being formula
+                if i + 1 < len(json_page_results):
+                    next_block = json_page_results[i + 1]
+                    if next_block.get("label") == "formula":
+                        # Extract formula number content
+                        number_content = block.get("content", "").strip()
+                        number_clean = clean_formula_number(number_content)
+
+                        # Get formula content and try to add tag
+                        formula_content = next_block.get("content", "")
+                        merged_block = deepcopy(next_block)
+
+                        # Add tag only if formula ends with \n$$
+                        if formula_content.endswith("\n$$"):
+                            merged_block["content"] = (
+                                formula_content[:-3] + f" \\tag{{{number_clean}}}\n$$"
+                            )
+
+                        merged_results.append(merged_block)
+                        skip_indices.add(
+                            i + 1
+                        )  # Skip the formula block (already merged)
+                        continue  # Skip formula_number block
+
+                # No formula follows, skip formula_number anyway
+                continue
+
+            # Case 2: formula followed by formula_number
+            if block.get("label") == "formula":
+                # Look for the next block being formula_number
+                if i + 1 < len(json_page_results):
+                    next_block = json_page_results[i + 1]
+                    if next_block.get("native_label") == "formula_number":
+                        # Extract formula number content
+                        number_content = next_block.get("content", "").strip()
+                        number_clean = clean_formula_number(number_content)
+
+                        # Get formula content and try to add tag
+                        formula_content = block.get("content", "")
+                        merged_block = deepcopy(block)
+
+                        # Add tag only if formula ends with \n$$
+                        if formula_content.endswith("\n$$"):
+                            merged_block["content"] = (
+                                formula_content[:-3] + f" \\tag{{{number_clean}}}\n$$"
+                            )
+
+                        merged_results.append(merged_block)
+                        skip_indices.add(i + 1)  # Skip the formula_number block
+                        continue
+
+                # No formula_number follows, keep formula as-is
+                merged_results.append(block)
+                continue
+
+            # Other blocks, keep as-is
+            merged_results.append(block)
+
+        # Reassign indices
+        for idx, block in enumerate(merged_results):
+            block["index"] = idx
+
+        return merged_results

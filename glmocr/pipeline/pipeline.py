@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Any, Optional, Tuple, List, Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -29,6 +30,27 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 profiler = get_profiler(__name__)
+
+
+@dataclass
+class _AsyncPipelineState:
+    """Shared state for the 3-thread layout path (loader -> layout -> recognition)."""
+
+    page_queue: queue.Queue
+    region_queue: queue.Queue
+    ready_units_queue: queue.Queue
+    recognition_results: List[Tuple[int, Dict]]
+    results_lock: threading.Lock
+    images_dict: Dict[int, Any]
+    layout_results_dict: Dict[int, List]
+    num_images_loaded: List[int]
+    unit_indices_holder: List[Optional[List[int]]]
+    unit_info_holder: List[Optional[Tuple]]
+    units_put: set
+    units_put_lock: threading.Lock
+    count_lock: threading.Lock
+    exceptions: List[Tuple[str, Exception]]
+    exception_lock: threading.Lock
 
 
 class Pipeline:
@@ -99,6 +121,31 @@ class Pipeline:
         self._page_maxsize = getattr(config, "page_maxsize", 100)
         self._region_maxsize = getattr(config, "region_maxsize", 800)
 
+    def _create_async_pipeline_state(
+        self,
+        page_maxsize: Optional[int],
+        region_maxsize: Optional[int],
+    ) -> _AsyncPipelineState:
+        q1 = page_maxsize if page_maxsize is not None else self._page_maxsize
+        q2 = region_maxsize if region_maxsize is not None else self._region_maxsize
+        return _AsyncPipelineState(
+            page_queue=queue.Queue(maxsize=q1),
+            region_queue=queue.Queue(maxsize=q2),
+            ready_units_queue=queue.Queue(),
+            recognition_results=[],
+            results_lock=threading.Lock(),
+            images_dict={},
+            layout_results_dict={},
+            num_images_loaded=[0],
+            unit_indices_holder=[None],
+            unit_info_holder=[None],
+            units_put=set(),
+            units_put_lock=threading.Lock(),
+            count_lock=threading.Lock(),
+            exceptions=[],
+            exception_lock=threading.Lock(),
+        )
+
     def process(
         self,
         request_data: Dict[str, Any],
@@ -124,41 +171,6 @@ class Pipeline:
         Yields:
             PipelineResult per input URL (one image or one PDF).
         """
-        # Shared state for the 3-thread layout pipeline (loader -> layout -> recognition).
-        # Only used when enable_layout and multi-image; early-return paths never touch these.
-        q1 = (
-            page_maxsize if page_maxsize is not None else self._page_maxsize
-        )  # page queue capacity
-        q2 = (
-            region_maxsize if region_maxsize is not None else self._region_maxsize
-        )  # region queue capacity
-        page_queue: queue.Queue = queue.Queue(maxsize=q1)  # pages from loader -> layout
-        region_queue: queue.Queue = queue.Queue(
-            maxsize=q2
-        )  # cropped regions -> VLM recognition
-        ready_units_queue: queue.Queue = (
-            queue.Queue()
-        )  # unit ids whose all regions are done
-        recognition_results: List[
-            Tuple[int, Dict]
-        ] = []  # (page_idx, region_dict with content)
-        results_lock = threading.Lock()  # protects recognition_results
-        images_dict: Dict[int, Any] = {}  # img_idx -> page image
-        layout_results_dict: Dict[int, List] = {}  # img_idx -> list of layout regions
-        num_images_loaded = [0]  # mutable so loading thread can set it
-        unit_indices_holder: List[Optional[List[int]]] = [
-            None
-        ]  # unit_indices from page loader
-        unit_info_holder: List[Optional[Tuple]] = [
-            None
-        ]  # (unit_image_indices, unit_region_count, ...)
-        units_put: set = set()  # unit ids already pushed to ready_units_queue
-        units_put_lock = threading.Lock()  # protects units_put
-        count_lock = threading.Lock()  # for unit_region_done_count updates
-        exceptions: List[
-            Tuple[str, Exception]
-        ] = []  # (thread_name, exception) from threads
-        exception_lock = threading.Lock()  # protects exceptions
 
         if not self.enable_layout:
             image_urls = self._extract_image_urls(request_data)
@@ -289,22 +301,24 @@ class Pipeline:
             )
             return
 
+        state = self._create_async_pipeline_state(page_maxsize, region_maxsize)
+
         def data_loading_thread() -> None:
             try:
                 pages, unit_indices = self.page_loader.load_pages_with_unit_indices(
                     image_urls
                 )
-                num_images_loaded[0] = len(pages)
-                unit_indices_holder[0] = unit_indices
+                state.num_images_loaded[0] = len(pages)
+                state.unit_indices_holder[0] = unit_indices
                 for img_idx, page in enumerate(pages):
-                    images_dict[img_idx] = page
-                    page_queue.put(("image", img_idx, page))
-                page_queue.put(("done", None, None))
+                    state.images_dict[img_idx] = page
+                    state.page_queue.put(("image", img_idx, page))
+                state.page_queue.put(("done", None, None))
             except Exception as e:
                 logger.exception("Data loading thread error: %s", e)
-                with exception_lock:
-                    exceptions.append(("DataLoadingThread", e))
-                page_queue.put(("error", None, None))
+                with state.exception_lock:
+                    state.exceptions.append(("DataLoadingThread", e))
+                state.page_queue.put(("error", None, None))
 
         def layout_detection_thread() -> None:
             try:
@@ -314,15 +328,15 @@ class Pipeline:
                 global_start_idx = 0
                 while True:
                     try:
-                        item_type, img_idx, data = page_queue.get(timeout=1)
+                        item_type, img_idx, data = state.page_queue.get(timeout=1)
                     except queue.Empty:
                         if loading_complete and batch_images:
                             self._stream_process_layout_batch(
                                 batch_images,
                                 batch_indices,
-                                region_queue,
-                                images_dict,
-                                layout_results_dict,
+                                state.region_queue,
+                                state.images_dict,
+                                state.layout_results_dict,
                                 save_layout_visualization,
                                 layout_vis_output_dir,
                                 global_start_idx,
@@ -338,9 +352,9 @@ class Pipeline:
                             self._stream_process_layout_batch(
                                 batch_images,
                                 batch_indices,
-                                region_queue,
-                                images_dict,
-                                layout_results_dict,
+                                state.region_queue,
+                                state.images_dict,
+                                state.layout_results_dict,
                                 save_layout_visualization,
                                 layout_vis_output_dir,
                                 global_start_idx,
@@ -354,27 +368,27 @@ class Pipeline:
                             self._stream_process_layout_batch(
                                 batch_images,
                                 batch_indices,
-                                region_queue,
-                                images_dict,
-                                layout_results_dict,
+                                state.region_queue,
+                                state.images_dict,
+                                state.layout_results_dict,
                                 save_layout_visualization,
                                 layout_vis_output_dir,
                                 global_start_idx,
                             )
-                        region_queue.put(("done", None, None))
+                        state.region_queue.put(("done", None, None))
                         break
                     elif item_type == "error":
-                        region_queue.put(("error", None, None))
+                        state.region_queue.put(("error", None, None))
                         break
             except Exception as e:
                 logger.exception("Layout detection thread error: %s", e)
-                with exception_lock:
-                    exceptions.append(("LayoutDetectionThread", e))
-                region_queue.put(("error", None, None))
+                with state.exception_lock:
+                    state.exceptions.append(("LayoutDetectionThread", e))
+                state.region_queue.put(("error", None, None))
 
         def maybe_notify_ready_units(img_idx: Optional[int] = None) -> None:
             """Notify when a unit is ready. O(1) when img_idx is given."""
-            info = unit_info_holder[0]
+            info = state.unit_info_holder[0]
             if info is None:
                 return
             if img_idx is not None and len(info) >= 5:
@@ -391,27 +405,27 @@ class Pipeline:
                 with c_lock:
                     unit_region_done_count[u] += 1
                     if unit_region_done_count[u] >= unit_region_count[u]:
-                        with units_put_lock:
-                            if u not in units_put:
-                                ready_units_queue.put(u)
-                                units_put.add(u)
+                        with state.units_put_lock:
+                            if u not in state.units_put:
+                                state.ready_units_queue.put(u)
+                                state.units_put.add(u)
                 return
             unit_image_indices, unit_region_count = info[:2]
             num_units = len(unit_region_count)
-            with results_lock:
-                rec = list(recognition_results)
-            with units_put_lock:
+            with state.results_lock:
+                rec = list(state.recognition_results)
+            with state.units_put_lock:
                 for u in range(num_units):
-                    if u in units_put:
+                    if u in state.units_put:
                         continue
                     if unit_region_count[u] == 0:
-                        ready_units_queue.put(u)
-                        units_put.add(u)
+                        state.ready_units_queue.put(u)
+                        state.units_put.add(u)
                         continue
                     count = sum(1 for (i, _) in rec if i in unit_image_indices[u])
                     if count >= unit_region_count[u]:
-                        ready_units_queue.put(u)
-                        units_put.add(u)
+                        state.ready_units_queue.put(u)
+                        state.units_put.add(u)
 
         def vlm_recognition_thread() -> None:
             try:
@@ -434,17 +448,17 @@ class Pipeline:
                             except Exception as e:
                                 logger.warning("Recognition failed: %s", e)
                                 info["content"] = ""
-                            with results_lock:
-                                recognition_results.append((page_idx, info))
+                            with state.results_lock:
+                                state.recognition_results.append((page_idx, info))
                             maybe_notify_ready_units(page_idx)
                     try:
-                        item_type, img_idx, data = region_queue.get(timeout=0.01)
+                        item_type, img_idx, data = state.region_queue.get(timeout=0.01)
                     except queue.Empty:
                         if processing_complete and len(futures) == 0:
                             for region, task_type, page_idx in pending_skip:
                                 region["content"] = None
-                                with results_lock:
-                                    recognition_results.append((page_idx, region))
+                                with state.results_lock:
+                                    state.recognition_results.append((page_idx, region))
                                 maybe_notify_ready_units(page_idx)
                             break
                         if futures:
@@ -483,14 +497,14 @@ class Pipeline:
                         except Exception as e:
                             logger.warning("Recognition failed: %s", e)
                             info["content"] = ""
-                        with results_lock:
-                            recognition_results.append((page_idx, info))
+                        with state.results_lock:
+                            state.recognition_results.append((page_idx, info))
                         maybe_notify_ready_units(page_idx)
                 executor.shutdown(wait=True)
             except Exception as e:
                 logger.exception("VLM recognition thread error: %s", e)
-                with exception_lock:
-                    exceptions.append(("VLMRecognitionThread", e))
+                with state.exception_lock:
+                    state.exceptions.append(("VLMRecognitionThread", e))
 
         t1 = threading.Thread(target=data_loading_thread, daemon=True)
         t2 = threading.Thread(target=layout_detection_thread, daemon=True)
@@ -501,8 +515,8 @@ class Pipeline:
         t1.join()
         t2.join()
 
-        num_images = num_images_loaded[0]
-        unit_indices = unit_indices_holder[0]
+        num_images = state.num_images_loaded[0]
+        unit_indices = state.unit_indices_holder[0]
         num_units = len(image_urls)
         original_inputs = [
             (url[7:] if url.startswith("file://") else url) for url in image_urls
@@ -518,9 +532,11 @@ class Pipeline:
                     layout_vis_dir=layout_vis_output_dir,
                 )
             t3.join()
-            with exception_lock:
-                if exceptions:
-                    raise RuntimeError("; ".join(f"{n}: {e}" for n, e in exceptions))
+            with state.exception_lock:
+                if state.exceptions:
+                    raise RuntimeError(
+                        "; ".join(f"{n}: {e}" for n, e in state.exceptions)
+                    )
             return
 
         unit_image_indices: List[List[int]] = [[] for _ in range(num_units)]
@@ -530,41 +546,43 @@ class Pipeline:
                 if u < num_units:
                     unit_image_indices[u].append(img_idx)
         unit_region_count = [
-            sum(len(layout_results_dict.get(i, [])) for i in unit_image_indices[u])
+            sum(
+                len(state.layout_results_dict.get(i, [])) for i in unit_image_indices[u]
+            )
             for u in range(num_units)
         ]
         unit_for_image: Dict[int, int] = {
             i: u for u in range(num_units) for i in unit_image_indices[u]
         }
         unit_region_done_count: List[int] = [0] * num_units
-        with results_lock:
-            rec_init = list(recognition_results)
+        with state.results_lock:
+            rec_init = list(state.recognition_results)
         for i, _ in rec_init:
             u = unit_for_image.get(i)
             if u is not None:
                 unit_region_done_count[u] += 1
-        unit_info_holder[0] = (
+        state.unit_info_holder[0] = (
             unit_image_indices,
             unit_region_count,
             unit_for_image,
             unit_region_done_count,
-            count_lock,
+            state.count_lock,
         )
         for u in range(num_units):
             if unit_region_done_count[u] >= unit_region_count[u]:
-                ready_units_queue.put(u)
-                units_put.add(u)
+                state.ready_units_queue.put(u)
+                state.units_put.add(u)
 
         emitted: set = set()
         while len(emitted) < num_units:
-            u = ready_units_queue.get()
+            u = state.ready_units_queue.get()
             if u in emitted:
                 continue
-            with results_lock:
-                rec = list(recognition_results)
+            with state.results_lock:
+                rec = list(state.recognition_results)
             count = sum(1 for (i, _) in rec if i in unit_image_indices[u])
             if count < unit_region_count[u]:
-                ready_units_queue.put(u)
+                state.ready_units_queue.put(u)
                 continue
             img_to_idx = {i: k for k, i in enumerate(unit_image_indices[u])}
             grouped_u: List[List[Dict]] = [[] for _ in unit_image_indices[u]]
@@ -582,9 +600,9 @@ class Pipeline:
             emitted.add(u)
 
         t3.join()
-        with exception_lock:
-            if exceptions:
-                raise RuntimeError("; ".join(f"{n}: {e}" for n, e in exceptions))
+        with state.exception_lock:
+            if state.exceptions:
+                raise RuntimeError("; ".join(f"{n}: {e}" for n, e in state.exceptions))
 
     def _stream_process_layout_batch(
         self,

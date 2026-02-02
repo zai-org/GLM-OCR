@@ -70,14 +70,13 @@ class TestPageLoader:
             pytest.skip("pypdfium2 is not installed")
 
         repo_root = Path(__file__).resolve().parents[2]
-        sample_pdf = (
-            repo_root
-            / "examples"
-            / "source"
-            / "954d59b1-d8c1-4baf-9e3b-c04bf1961d7b.pdf"
+        source_dir = repo_root / "examples" / "source"
+        sample_pdf = next(
+            (f for f in source_dir.iterdir() if f.suffix.lower() == ".pdf"),
+            None,
         )
-        if not sample_pdf.exists():
-            pytest.skip(f"Sample PDF not found: {sample_pdf}")
+        if not sample_pdf or not sample_pdf.exists():
+            pytest.skip(f"No sample PDF found in {source_dir}")
 
         loader = PageLoader(PageLoaderConfig())
         pages = loader.load_pages(str(sample_pdf))
@@ -94,14 +93,13 @@ class TestPageLoader:
             pytest.skip("pypdfium2 is not installed")
 
         repo_root = Path(__file__).resolve().parents[2]
-        sample_pdf = (
-            repo_root
-            / "examples"
-            / "source"
-            / "954d59b1-d8c1-4baf-9e3b-c04bf1961d7b.pdf"
+        source_dir = repo_root / "examples" / "source"
+        sample_pdf = next(
+            (f for f in source_dir.iterdir() if f.suffix.lower() == ".pdf"),
+            None,
         )
-        if not sample_pdf.exists():
-            pytest.skip(f"Sample PDF not found: {sample_pdf}")
+        if not sample_pdf or not sample_pdf.exists():
+            pytest.skip(f"No sample PDF found in {source_dir}")
 
         loader = PageLoader(PageLoaderConfig())
         pdf_uri = f"file://{sample_pdf.resolve()}"

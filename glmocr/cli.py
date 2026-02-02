@@ -70,7 +70,7 @@ def main():
     glmocr parse image.png --config my_config.yaml
 
     # Specify output directory
-  glmocr parse image.png --output ./results/
+  glmocr parse image.png --output ./output/
 
     # Specify config file
   glmocr parse image.png --config config.yaml
@@ -88,8 +88,8 @@ def main():
         "--output",
         "-o",
         type=str,
-        default="./results",
-        help="Output directory (default: ./results)",
+        default="./output",
+        help="Output directory (default: ./output)",
     )
     parse_parser.add_argument(
         "--no-save",

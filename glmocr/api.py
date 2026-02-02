@@ -32,7 +32,7 @@ class GlmOcr:
         results = parser.predict("image1.png")
         for result in results:
             print(result.json_result)
-            result.save(output_dir="./results")
+            result.save(output_dir="./output")
 
         # Cleanup
         parser.close()
@@ -81,7 +81,7 @@ class GlmOcr:
             results = parser.predict("image.png")
             results = parser.predict(["img1.png", "doc.pdf"])
             for r in results:
-                r.save(output_dir="./results")
+                r.save(output_dir="./output")
         """
         import tempfile
 
@@ -153,7 +153,7 @@ def parse(
     Example:
         results = predict("image.png")
         for r in results:
-            r.save(output_dir="./results")
+            r.save(output_dir="./output")
     """
     with GlmOcr(config_path=config_path) as parser:
         return parser.parse(images, save_layout_visualization=save_layout_visualization)

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict, Optional
 
@@ -18,6 +17,7 @@ from transformers import (
 from glmocr.layout.base import BaseLayoutDetector
 from glmocr.utils.layout_postprocess_utils import apply_layout_postprocess
 from glmocr.utils.logging import get_logger
+from glmocr.utils.visualization_utils import save_layout_visualization
 
 if TYPE_CHECKING:
     from glmocr.config import LayoutConfig
@@ -57,9 +57,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
 
     def start(self):
         """Load model and processor once in the main process."""
-        logger.debug("Initializing PP-DocLayoutV3 (single instance)...")
-        if self.cuda_visible_devices is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.cuda_visible_devices
+        logger.debug("Initializing PP-DocLayoutV3...")
 
         self._image_processor = PPDocLayoutV3ImageProcessorFast.from_pretrained(
             self.model_dir
@@ -67,21 +65,28 @@ class PPDocLayoutDetector(BaseLayoutDetector):
         self._model = PPDocLayoutV3ForObjectDetection.from_pretrained(self.model_dir)
         self._model.eval()
 
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            self._device = (
+                f"cuda:{self.cuda_visible_devices}"
+                if self.cuda_visible_devices is not None
+                else "cuda"
+            )
+        else:
+            self._device = "cpu"
         self._model = self._model.to(self._device)
         if self.id2label is None:
             self.id2label = self._model.config.id2label
-        logger.debug("PP-DocLayoutV3 loaded on %s (single instance)", self._device)
+        logger.debug(f"PP-DocLayoutV3 loaded on device: {self._device}")
 
     def stop(self):
         """Unload model and processor."""
         if self._model is not None:
-            if self._device == "cuda":
+            if self._device.startswith("cuda"):
                 torch.cuda.empty_cache()
             self._model = None
         self._image_processor = None
         self._device = None
-        logger.debug("PP-DocLayoutV3 stopped")
+        logger.debug("PP-DocLayoutV3 stopped.")
 
     def process(
         self,
@@ -165,42 +170,26 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             )
             all_paddle_format_results.extend(paddle_format_results)
 
-            if self._device == "cuda" and chunk_end < num_images:
+            if self._device.startswith("cuda") and chunk_end < num_images:
                 del inputs, outputs, raw_results
                 torch.cuda.empty_cache()
 
         saved_vis_paths = []
         if save_visualization and visualization_output_dir:
-            import cv2
-
             vis_output_path = Path(visualization_output_dir)
             vis_output_path.mkdir(parents=True, exist_ok=True)
             for img_idx, img_results in enumerate(all_paddle_format_results):
                 vis_img = np.array(pil_images[img_idx])
-                for item in img_results:
-                    box = item["coordinate"]
-                    label = item["label"]
-                    score = item["score"]
-                    cv2.rectangle(
-                        vis_img,
-                        (box[0], box[1]),
-                        (box[2], box[3]),
-                        (0, 255, 0),
-                        2,
-                    )
-                    text = f"{label}: {score:.2f}"
-                    cv2.putText(
-                        vis_img,
-                        text,
-                        (box[0], box[1] - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        1,
-                    )
                 save_filename = f"layout_page{global_start_idx + img_idx}.jpg"
                 save_path = vis_output_path / save_filename
-                cv2.imwrite(str(save_path), cv2.cvtColor(vis_img, cv2.COLOR_RGB2BGR))
+                save_layout_visualization(
+                    image=vis_img,
+                    boxes=img_results,
+                    save_path=str(save_path),
+                    show_label=True,
+                    show_score=True,
+                    show_index=True,
+                )
                 saved_vis_paths.append(str(save_path))
 
         all_results = []
