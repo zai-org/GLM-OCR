@@ -297,6 +297,14 @@ class MyPipeline:
 ```
 
 
+## Acknowledgement
+
+This project is inspired by the excellent work of the following projects and communities:
+
+- [PP-DocLayout-V3](https://huggingface.co/PaddlePaddle/PP-DocLayoutV3)
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [MinerU](https://github.com/opendatalab/MinerU)
+
 ## License
 
 The Code of this repo is under Apache License 2.0.

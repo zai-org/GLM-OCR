@@ -292,7 +292,16 @@ class MyPipeline:
     pass
 ```
 
-## License
+
+## 致谢
+
+本项目受以下项目与社区的杰出工作启发：
+
+- [PP-DocLayout-V3](https://huggingface.co/PaddlePaddle/PP-DocLayoutV3)
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [MinerU](https://github.com/opendatalab/MinerU)
+
+## 开源协议
 
 本仓库代码遵循 Apache License 2.0。
 
