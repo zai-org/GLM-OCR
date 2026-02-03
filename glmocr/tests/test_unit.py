@@ -331,11 +331,12 @@ class TestMaaSClient:
         config = MaaSApiConfig(api_key="test-key")
         client = MaaSClient(config)
 
-        # Bytes should be encoded to base64
+        # Bytes should be encoded to base64 and wrapped as data URI
         data = b"test image data"
         result = client._prepare_file(data)
         expected = base64.b64encode(data).decode("utf-8")
-        assert result == expected
+        assert result.endswith(expected)
+        assert result.startswith("data:")
 
     def test_maas_client_prepare_file_base64_string(self):
         """MaaSClient accepts base64 strings directly."""
@@ -346,11 +347,12 @@ class TestMaaSClient:
         config = MaaSApiConfig(api_key="test-key")
         client = MaaSClient(config)
 
-        # A long base64 string should be returned as-is
-        original_data = b"x" * 200  # Generate enough data to make a long base64
+        # A long base64 string should be wrapped as a data URI
+        original_data = b"\xff\xff\xff" * 80  # Ensure base64 contains '/'
         b64_str = base64.b64encode(original_data).decode("utf-8")
         result = client._prepare_file(b64_str)
-        assert result == b64_str
+        assert result.startswith("data:")
+        assert result.endswith(b64_str)
 
     def test_maas_client_prepare_file_data_uri(self):
         """MaaSClient extracts base64 from data URIs."""
@@ -365,7 +367,7 @@ class TestMaaSClient:
         b64_data = base64.b64encode(b"test image").decode("utf-8")
         data_uri = f"data:image/png;base64,{b64_data}"
         result = client._prepare_file(data_uri)
-        assert result == b64_data
+        assert result == data_uri
 
     def test_maas_client_looks_like_base64(self):
         """_looks_like_base64 correctly identifies base64 strings."""

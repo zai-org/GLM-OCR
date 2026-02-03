@@ -68,6 +68,10 @@ That's it! When `maas.enabled=true`, the SDK acts as a thin wrapper that:
 - Returns the results directly (Markdown + JSON layout details)
 - No local processing, no GPU required
 
+Input note (MaaS): the upstream API accepts `file` as a URL or a `data:<mime>;base64,...` data URI.
+If you have raw base64 without the `data:` prefix, wrap it as a data URI (recommended). The SDK will
+auto-wrap local file paths / bytes / raw base64 into a data URI when calling MaaS.
+
 API documentation: https://docs.bigmodel.cn/cn/guide/models/vlm/glm-ocr
 
 #### Option 2: Self-host with vLLM / SGLang

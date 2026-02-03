@@ -143,7 +143,7 @@ class GlmOcr:
                 result = PipelineResult(
                     json_result=[],
                     markdown_result="",
-                    source=image,
+                    original_images=[image],
                 )
                 result._error = str(e)
                 results.append(result)
@@ -179,7 +179,7 @@ class GlmOcr:
         result = PipelineResult(
             json_result=json_result,
             markdown_result=markdown_result,
-            source=source,
+            original_images=[source],
         )
 
         # Store additional MaaS response data

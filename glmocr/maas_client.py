@@ -18,6 +18,7 @@ import os
 import random
 import time
 import traceback
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -36,6 +37,24 @@ profiler = get_profiler(__name__)
 # Default MaaS API endpoint
 DEFAULT_MAAS_URL = "https://open.bigmodel.cn/api/paas/v4/layout_parsing"
 DEFAULT_MAAS_MODEL = "glm-ocr"
+MAX_MAAS_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def _sniff_mime_from_bytes(data: bytes) -> str:
+    # PDF
+    if data[:5] == b"%PDF-":
+        return "application/pdf"
+    # PNG
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    # JPEG
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    return "application/octet-stream"
+
+
+def _as_data_uri(mime: str, b64: str) -> str:
+    return f"data:{mime};base64,{b64}"
 
 
 class MaaSClient:
@@ -184,7 +203,8 @@ class MaaSClient:
         """
         # If it's bytes, encode to base64
         if isinstance(source, bytes):
-            return base64.b64encode(source).decode("utf-8")
+            b64 = base64.b64encode(source).decode("utf-8")
+            return _as_data_uri(_sniff_mime_from_bytes(source), b64)
 
         source_str = str(source)
 
@@ -194,26 +214,75 @@ class MaaSClient:
 
         # If it's a data URI, extract the base64 part
         if source_str.startswith("data:"):
-            # Format: data:[<mediatype>][;base64],<data>
-            if ";base64," in source_str:
-                return source_str.split(";base64,", 1)[1]
-            elif "," in source_str:
-                # Non-base64 data URI (rare)
-                return source_str.split(",", 1)[1]
+            # MaaS endpoint accepts data URIs directly.
             return source_str
 
         # Check if it looks like base64 (not a file path)
         # Base64 strings are typically long and don't contain path separators
         if self._looks_like_base64(source_str):
-            return source_str
+            # MaaS requires data URI even for base64. Try to infer mime.
+            candidate = "".join(source_str.split())
+            # Strip optional "<|base64|>" prefix.
+            if candidate.startswith("<|base64|>"):
+                candidate = candidate[len("<|base64|>") :]
+            pad = (-len(candidate)) % 4
+            if pad:
+                candidate = candidate + ("=" * pad)
+            try:
+                decoded = base64.b64decode(candidate)
+                mime = _sniff_mime_from_bytes(decoded)
+            except Exception:
+                mime = "application/octet-stream"
+            return _as_data_uri(mime, "".join(source_str.split()))
 
         # If it's a file path, read and encode
         path = Path(source_str)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
 
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
+        file_bytes = path.read_bytes()
+
+        # Keep PDFs as-is, but wrap as data URI for MaaS.
+        if path.suffix.lower() == ".pdf" or file_bytes[:5] == b"%PDF-":
+            b64 = base64.b64encode(file_bytes).decode("utf-8")
+            return _as_data_uri("application/pdf", b64)
+
+        # MaaS only accepts JPG/PNG images. If the file is not actually JPEG/PNG
+        # (e.g. WEBP renamed to .jpeg), re-encode to a supported format.
+        try:
+            from PIL import Image
+
+            img = Image.open(BytesIO(file_bytes))
+            fmt = (img.format or "").upper()
+            if fmt in ("JPEG", "JPG", "PNG"):
+                b64 = base64.b64encode(file_bytes).decode("utf-8")
+                mime = _sniff_mime_from_bytes(file_bytes)
+                return _as_data_uri(mime, b64)
+
+            # Convert to PNG first (lossless for screenshots/text).
+            img_converted = (
+                img.convert("RGBA")
+                if img.mode in ("RGBA", "LA")
+                else img.convert("RGB")
+            )
+            buf = BytesIO()
+            if img_converted.mode == "RGBA":
+                img_converted.save(buf, format="PNG")
+            else:
+                # Try PNG; if too large, fallback to JPEG.
+                img_converted.save(buf, format="PNG")
+                if buf.tell() > MAX_MAAS_IMAGE_BYTES:
+                    buf = BytesIO()
+                    img_converted.save(buf, format="JPEG", quality=92, optimize=True)
+            converted_bytes = buf.getvalue()
+            b64 = base64.b64encode(converted_bytes).decode("utf-8")
+            mime = _sniff_mime_from_bytes(converted_bytes)
+            return _as_data_uri(mime, b64)
+        except Exception:
+            # If PIL cannot decode, fall back to raw bytes.
+            b64 = base64.b64encode(file_bytes).decode("utf-8")
+            mime = _sniff_mime_from_bytes(file_bytes)
+            return _as_data_uri(mime, b64)
 
     @staticmethod
     def _looks_like_base64(s: str) -> bool:
@@ -452,10 +521,18 @@ class MaaSClient:
         Returns:
             API response dict.
         """
-        # Create payload directly with the base64 data
-        payload: Dict[str, Any] = {
-            "model": self.model,
-            "file": data,
-        }
+        # MaaS currently expects data URIs. If caller passes a raw base64 string,
+        # wrap it as a data URI (mime is inferred when possible).
+        file_value = data
+        if isinstance(file_value, str) and not file_value.startswith(
+            (
+                "http://",
+                "https://",
+                "data:",
+            )
+        ):
+            file_value = self._prepare_file(file_value)
+
+        payload: Dict[str, Any] = {"model": self.model, "file": file_value}
         payload.update(kwargs)
         return self._send_request(payload)
