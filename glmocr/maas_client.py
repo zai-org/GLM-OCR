@@ -177,7 +177,7 @@ class MaaSClient:
         """Prepare file content for API request.
 
         Args:
-            source: File path, URL, or raw bytes.
+            source: File path, URL, base64 string, data URI, or raw bytes.
 
         Returns:
             URL string or base64-encoded data.
@@ -192,6 +192,21 @@ class MaaSClient:
         if source_str.startswith(("http://", "https://")):
             return source_str
 
+        # If it's a data URI, extract the base64 part
+        if source_str.startswith("data:"):
+            # Format: data:[<mediatype>][;base64],<data>
+            if ";base64," in source_str:
+                return source_str.split(";base64,", 1)[1]
+            elif "," in source_str:
+                # Non-base64 data URI (rare)
+                return source_str.split(",", 1)[1]
+            return source_str
+
+        # Check if it looks like base64 (not a file path)
+        # Base64 strings are typically long and don't contain path separators
+        if self._looks_like_base64(source_str):
+            return source_str
+
         # If it's a file path, read and encode
         path = Path(source_str)
         if not path.exists():
@@ -199,6 +214,42 @@ class MaaSClient:
 
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
+
+    @staticmethod
+    def _looks_like_base64(s: str) -> bool:
+        """Heuristically detect base64 payloads.
+
+        We intentionally avoid using path-separator heuristics because valid
+        base64 often contains '/'. Instead we try a strict base64 decode.
+        """
+        if not isinstance(s, str):
+            return False
+
+        candidate = "".join(s.split())
+        if len(candidate) < 128:
+            return False
+
+        # Reject obvious filenames/paths early.
+        if candidate.startswith(("http://", "https://", "file://", "data:")):
+            return False
+        if "\\" in candidate:
+            return False
+
+        # If it has a short extension-like suffix, assume it's a filename.
+        if "." in candidate and len(candidate.rsplit(".", 1)[-1]) <= 5:
+            return False
+
+        # Pad to a multiple of 4 for base64 decoding.
+        pad = (-len(candidate)) % 4
+        if pad:
+            candidate = candidate + ("=" * pad)
+
+        try:
+            # validate=True enforces correct alphabet.
+            base64.b64decode(candidate, validate=True)
+            return True
+        except Exception:
+            return False
 
     def parse(
         self,

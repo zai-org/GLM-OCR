@@ -89,6 +89,29 @@ def load_image_to_base64(
     """
     import os
 
+    def _try_decode_base64_to_image_bytes(s: str) -> bytes | None:
+        # Remove whitespace/newlines and pad for base64.
+        candidate = "".join(str(s).split())
+        if len(candidate) < 32:
+            return None
+
+        # Strip optional "<|base64|>" prefix.
+        if candidate.startswith("<|base64|>"):
+            candidate = candidate[len("<|base64|>") :]
+
+        # If it looks like a filename (has a short extension), skip.
+        if "." in candidate and len(candidate.rsplit(".", 1)[-1]) <= 5:
+            return None
+
+        pad = (-len(candidate)) % 4
+        if pad:
+            candidate = candidate + ("=" * pad)
+
+        try:
+            return base64.b64decode(candidate, validate=True)
+        except Exception:
+            return None
+
     # Handle different input types
     if isinstance(image_source, Image.Image):
         # Already a PIL Image
@@ -110,7 +133,11 @@ def load_image_to_base64(
             image_data = base64.b64decode(image_source.split(",")[1])
             image = Image.open(io.BytesIO(image_data))
         else:
-            raise ValueError(f"Invalid image source: {image_source}")
+            # Raw base64 payload or <|base64|> blob
+            decoded = _try_decode_base64_to_image_bytes(image_source)
+            if decoded is None:
+                raise ValueError(f"Invalid image source: {image_source}")
+            image = Image.open(io.BytesIO(decoded))
     else:
         raise TypeError(f"Unsupported image source type: {type(image_source)}")
 
