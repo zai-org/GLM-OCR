@@ -113,7 +113,8 @@ Launch the service:
 pip install git+https://github.com/huggingface/transformers.git
 
 # Run with MTP for better performance
-python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 1 --speculative-eagle-topk 1
+python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4
+# Modify the speculative config base on your device
 ```
 
 ##### Update Configuration
