@@ -115,7 +115,7 @@ pip install git+https://github.com/huggingface/transformers.git
 python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080
 
 # Run with MTP for better performance
-python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 1
+python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 1 --speculative-eagle-topk 1
 ```
 
 ##### Update Configuration
