@@ -276,6 +276,100 @@ class TestResultFormatter:
         assert "....." not in cleaned
 
 
+class TestOCRClient:
+    """Tests for OCRClient."""
+
+    def test_ocr_client_model_field_default(self):
+        """OCRClient model field defaults to None."""
+        from glmocr.ocr_client import OCRClient
+        from glmocr.config import OCRApiConfig
+
+        config = OCRApiConfig()
+        client = OCRClient(config)
+        assert client.model is None
+
+    def test_ocr_client_model_field_from_config(self):
+        """OCRClient reads model field from config."""
+        from glmocr.ocr_client import OCRClient
+        from glmocr.config import OCRApiConfig
+
+        config = OCRApiConfig(model="zai-org/glm-ocr")
+        client = OCRClient(config)
+        assert client.model == "zai-org/glm-ocr"
+
+    def test_ocr_client_process_injects_model_when_set(self):
+        """OCRClient.process injects model field when configured."""
+        from glmocr.ocr_client import OCRClient
+        from glmocr.config import OCRApiConfig
+
+        config = OCRApiConfig(model="test-model")
+        client = OCRClient(config)
+
+        # Create a test request
+        request_data = {"messages": [{"role": "user", "content": "test"}]}
+
+        # Mock the session to avoid actual HTTP calls
+        with patch.object(client, "_session") as mock_session:
+            mock_response = type(
+                "Response",
+                (),
+                {
+                    "status_code": 200,
+                    "json": lambda self: {
+                        "choices": [{"message": {"content": "result"}}]
+                    },
+                },
+            )()
+            mock_session.post.return_value = mock_response
+
+            client.process(request_data)
+
+            # Verify model was injected into request_data
+            assert request_data["model"] == "test-model"
+
+    def test_ocr_client_process_does_not_inject_model_when_none(self):
+        """OCRClient.process does not inject model field when None."""
+        from glmocr.ocr_client import OCRClient
+        from glmocr.config import OCRApiConfig
+
+        config = OCRApiConfig(model=None)
+        client = OCRClient(config)
+
+        # Create a test request
+        request_data = {"messages": [{"role": "user", "content": "test"}]}
+
+        # Mock the session to avoid actual HTTP calls
+        with patch.object(client, "_session") as mock_session:
+            mock_response = type(
+                "Response",
+                (),
+                {
+                    "status_code": 200,
+                    "json": lambda self: {
+                        "choices": [{"message": {"content": "result"}}]
+                    },
+                },
+            )()
+            mock_session.post.return_value = mock_response
+
+            client.process(request_data)
+
+            # Verify model was NOT injected into request_data
+            assert "model" not in request_data
+
+    def test_ocr_api_config_model_field(self):
+        """OCRApiConfig has optional model field."""
+        from glmocr.config import OCRApiConfig
+
+        # Default should be None
+        config = OCRApiConfig()
+        assert config.model is None
+
+        # Can be set
+        config = OCRApiConfig(model="ollama-model")
+        assert config.model == "ollama-model"
+
+
 class TestMaaSClient:
     """Tests for MaaSClient."""
 

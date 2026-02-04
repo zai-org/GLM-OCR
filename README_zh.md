@@ -133,6 +133,52 @@ pipeline:
     api_port: 8080
 ```
 
+#### 方式 3：使用 Ollama 自部署
+
+使用 Ollama 部署 GLM-OCR，提供简单的本地推理和 OpenAI 兼容 API。
+
+##### 安装和设置 Ollama
+
+1. 从 https://ollama.ai 安装 Ollama
+
+2. 拉取 GLM-OCR 模型：
+
+```bash
+# 从 Ollama 仓库拉取（如果可用）
+ollama pull zai-org/glm-ocr
+
+# 或创建 Modelfile 并从 Hugging Face 导入
+# 参考 Ollama 文档了解如何导入自定义模型
+```
+
+3. 运行模型并启用 OpenAI 兼容 API：
+
+```bash
+ollama serve
+# OpenAI 兼容端点将在 http://localhost:11434/v1 可用
+```
+
+##### 更新配置
+
+为 Ollama 配置 `config.yaml`：
+
+```yaml
+pipeline:
+  maas:
+    enabled: false # 禁用 MaaS 模式
+  ocr_api:
+    api_host: localhost
+    api_port: 11434 # Ollama 默认端口
+    api_path: /v1/chat/completions
+    model: glm-ocr:latest # 必填：指定模型名称
+```
+
+**重要说明：**
+
+- 对于 Ollama 和 MLX 部署，配置中的 `model` 字段是**必需的**
+- 对于 vLLM/SGLang，`model` 字段是可选的（可以省略）
+- 如果遇到 "model is required" 错误，请确保在配置中设置了 `pipeline.ocr_api.model`
+
 ### SDK 使用指南
 
 #### CLI

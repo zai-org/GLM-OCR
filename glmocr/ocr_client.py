@@ -54,6 +54,7 @@ class OCRClient:
 
         self.api_key = config.api_key or os.getenv("GLMOCR_API_KEY")
         self.extra_headers = config.headers or {}
+        self.model = config.model  # Optional model name
 
         # SSL verification
         self.verify_ssl = config.verify_ssl
@@ -91,9 +92,6 @@ class OCRClient:
         # Connection pool size (from config, or default). Should be >= pipeline max_workers.
         pool_size = getattr(config, "connection_pool_size", None)
         self._pool_maxsize = pool_size if pool_size is not None else 128
-
-        # Model information
-        self.model = None
 
     def _make_session(self) -> requests.Session:
         """Create a Session with a larger connection pool for concurrent use."""
@@ -198,7 +196,6 @@ class OCRClient:
                                     "Successfully connected to API server at %s",
                                     self.api_url,
                                 )
-                                self.model = "default"
                                 return
                             else:
                                 logger.warning(
@@ -235,6 +232,10 @@ class OCRClient:
         """
         if self._session is None:
             self._session = self._make_session()
+
+        # Inject model field if configured (required by Ollama/MLX)
+        if self.model:
+            request_data["model"] = self.model
 
         headers = {"Content-Type": "application/json", **self.extra_headers}
         if self.api_key:

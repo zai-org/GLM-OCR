@@ -130,6 +130,56 @@ pipeline:
     api_port: 8080
 ```
 
+#### Option 3: Self-host with Ollama
+
+Deploy GLM-OCR using Ollama for easy local inference with OpenAI-compatible API.
+
+##### Install and Setup Ollama
+
+1. Install Ollama from https://ollama.ai
+
+2. Create a Modelfile to import GLM-OCR from Hugging Face:
+
+```bash
+# Create a Modelfile
+cat > Modelfile << 'EOF'
+FROM zai-org/GLM-OCR
+EOF
+
+# Create the model in Ollama
+ollama create glm-ocr -f Modelfile
+```
+
+Note: GLM-OCR is not yet available in the Ollama registry. You need to import it from Hugging Face using a Modelfile. See [Ollama documentation](https://github.com/ollama/ollama/blob/main/docs/import.md) for more details on importing models.
+
+3. Run the model with OpenAI-compatible API:
+
+```bash
+ollama serve
+# The OpenAI-compatible endpoint will be available at http://localhost:11434/v1
+```
+
+##### Update Configuration
+
+Configure `config.yaml` for Ollama:
+
+```yaml
+pipeline:
+  maas:
+    enabled: false # Disable MaaS mode
+  ocr_api:
+    api_host: localhost
+    api_port: 11434 # Ollama default port
+    api_path: /v1/chat/completions
+    model: glm-ocr # Required: specify the model name (use the name you created)
+```
+
+**Important Notes:**
+
+- For Ollama and MLX deployments, the `model` field is **required** in the configuration
+- For vLLM/SGLang, the `model` field is optional (can be omitted)
+- If you see a "model is required" error, make sure to set `pipeline.ocr_api.model` in your config
+
 ### SDK Usage Guide
 
 #### CLI

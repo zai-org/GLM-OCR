@@ -32,6 +32,7 @@ class OCRApiConfig(_BaseConfig):
     api_scheme: Optional[str] = None
     api_path: str = "/v1/chat/completions"
     api_url: Optional[str] = None
+    model: Optional[str] = None  # Optional model name (required by Ollama/MLX)
     api_key: Optional[str] = None
     headers: Dict[str, str] = Field(default_factory=dict)
     verify_ssl: bool = False

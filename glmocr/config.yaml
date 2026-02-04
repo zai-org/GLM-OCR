@@ -69,6 +69,11 @@ pipeline:
     api_path: /v1/chat/completions
     api_url: null # full URL override (optional)
 
+    # Model name (optional)
+    # Required by some runtimes (e.g., Ollama/MLX). Not required for vLLM/SGLang.
+    # If not set, the "model" field will not be included in the request payload.
+    model: null
+
     # Authentication (for MaaS providers like Zhipu, OpenAI, etc.)
     api_key: null # or set GLMOCR_API_KEY env var
     headers: {} # additional HTTP headers
