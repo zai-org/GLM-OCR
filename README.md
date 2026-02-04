@@ -132,34 +132,7 @@ pipeline:
 
 #### Option 3: Apple Silicon with mlx-vlm
 
-Run GLM-OCR natively on Apple Silicon Macs using mlx-vlm – optimized for the Metal GPU.
-See the **[detailed MLX deployment guide](examples/mlx-deploy/README.md)** for full setup instructions, including environment isolation and troubleshooting.
-
-> **Known issue:** mlx-vlm requires `transformers>=5.0.0rc3`, which conflicts with the version used by the GLM-OCR SDK. You need **separate Python environments** for the server and the SDK. This will be resolved in a future release. Also, install mlx-vlm from git until the next PyPI release ships with GLM-OCR support:
->
-> ```bash
-> pip install git+https://github.com/Blaizzy/mlx-vlm.git
-> ```
-
-Quick start:
-
-```bash
-# In server environment
-mlx_vlm.server --trust-remote-code
-```
-
-Configure `config.yaml` – note that `model` is **required** for mlx-vlm (unlike vLLM/SGLang) and api_path does not include /v1 prefix:
-
-```yaml
-pipeline:
-  maas:
-    enabled: false
-  ocr_api:
-    api_host: localhost
-    api_port: 8080
-    model: mlx-community/GLM-OCR-bf16 # Required for mlx-vlm
-    api_path: /chat/completions # Remove /v1 prefix
-```
+See the **[MLX Detailed Deployment Guide](examples/mlx-deploy/README.md)** for full setup instructions, including environment isolation and troubleshooting.
 
 ### SDK Usage Guide
 
