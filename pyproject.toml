@@ -92,7 +92,7 @@ Documentation = "https://github.com/ZHIPUAI/glm-ocr#readme"
 Issues = "https://github.com/ZHIPUAI/glm-ocr/issues"
 
 [tool.setuptools]
-packages = ["glmocr"]
+packages = ["glmocr", "glmocr.*"]
 
 [tool.black]
 line-length = 100
