@@ -43,6 +43,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
         self.cuda_visible_devices = config.cuda_visible_devices
 
         self.threshold = config.threshold
+        self.threshold_by_class = config.threshold_by_class
         self.layout_nms = config.layout_nms
         self.layout_unclip_ratio = config.layout_unclip_ratio
         self.layout_merge_bboxes_mode = config.layout_merge_bboxes_mode
@@ -87,6 +88,62 @@ class PPDocLayoutDetector(BaseLayoutDetector):
         self._image_processor = None
         self._device = None
         logger.debug("PP-DocLayoutV3 stopped.")
+
+    def _apply_per_class_threshold(self, raw_results: List[Dict]):
+        """Filter detections by per-class confidence thresholds.
+
+        For each detection, look up its class in threshold_by_class. Classes
+        not listed fall back to self.threshold.
+
+        Args:
+            raw_results: List of dicts from post_process_object_detection,
+                each with 'scores', 'labels', 'boxes' tensors and optional
+                'order_seq' tensor and 'polygon_points' list.
+
+        Returns:
+            Filtered list in the same format.
+        """
+        # Build mapping for label name to class id lookup.
+        label2id = {name: int(cls_id) for cls_id, name in self.id2label.items()}
+
+        # Build a lookup mapping class_id (int) -> threshold (float).
+        class_thresholds = {}
+        for key, value in self.threshold_by_class.items():
+            if isinstance(key, str):
+                if key in label2id:
+                    class_thresholds[label2id[key]] = float(value)
+            else:
+                class_thresholds[int(key)] = float(value)
+
+        fallback = self.threshold
+
+        filtered = []
+        for result in raw_results:
+            scores = result["scores"]
+            labels = result["labels"]
+
+            # Build a per-detection threshold tensor: use the per-class value
+            # if defined, otherwise fall back to the global threshold.
+            thresholds = torch.full_like(scores, fallback)
+            for class_id, thresh in class_thresholds.items():
+                thresholds[labels == class_id] = thresh
+
+            keep = scores >= thresholds
+
+            new_result = {
+                "scores": scores[keep],
+                "labels": labels[keep],
+                "boxes": result["boxes"][keep],
+            }
+            if "order_seq" in result:
+                new_result["order_seq"] = result["order_seq"][keep]
+            if "polygon_points" in result:
+                keep_list = keep.tolist()
+                new_result["polygon_points"] = [
+                    p for p, k in zip(result["polygon_points"], keep_list) if k
+                ]
+            filtered.append(new_result)
+        return filtered
 
     def process(
         self,
@@ -154,11 +211,23 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             except Exception as e:
                 logger.warning("Pre-filter failed (%s), continuing...", e)
 
+            if self.threshold_by_class:
+                # Use the lowest threshold (per-class or global fallback)
+                # so post-processing doesn't discard valid detections early.
+                pre_threshold = min(
+                    self.threshold, min(self.threshold_by_class.values())
+                )
+            else:
+                pre_threshold = self.threshold
+
             raw_results = self._image_processor.post_process_object_detection(
                 outputs,
-                threshold=self.threshold,
+                threshold=pre_threshold,
                 target_sizes=target_sizes,
             )
+
+            if self.threshold_by_class:
+                raw_results = self._apply_per_class_threshold(raw_results)
             img_sizes = [img.size for img in chunk_pil]
             paddle_format_results = apply_layout_postprocess(
                 raw_results=raw_results,

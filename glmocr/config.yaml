@@ -187,6 +187,8 @@ pipeline:
     # threshold_by_class:           # per-class threshold override
     #   0: 0.5
     #   1: 0.3
+    #   text: 0.5
+    #   table: 0.2
 
     # Processing
     # batch_size: max images per model forward pass (reduce to 1 if OOM)
@@ -227,7 +229,7 @@ pipeline:
       20: large # seal
       21: large # table
       22: large # text
-      23: large # text
+      23: large # vertical_text
       24: large # vision_footnote
 
     # Map detected labels to OCR task types
