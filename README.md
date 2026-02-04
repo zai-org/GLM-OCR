@@ -117,19 +117,34 @@ python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative
 # Modify the speculative config base on your device
 ```
 
+##### Update Configuration
+
+After launching the service, configure `config.yaml`:
+
+```yaml
+pipeline:
+  maas:
+    enabled: false # Disable MaaS mode (default)
+  ocr_api:
+    api_host: localhost # or your vLLM/SGLang server address
+    api_port: 8080
+```
+
 #### Option 3: Apple Silicon with mlx-vlm
 
 Run GLM-OCR natively on Apple Silicon Macs using mlx-vlm – optimized for the Metal GPU.
+See the **[detailed MLX deployment guide](examples/mlx-deploy/README.md)** for full setup instructions, including environment isolation and troubleshooting.
 
-Install mlx-vlm:
+> **Known issue:** mlx-vlm requires `transformers>=5.0.0rc3`, which conflicts with the version used by the GLM-OCR SDK. You need **separate Python environments** for the server and the SDK. This will be resolved in a future release. Also, install mlx-vlm from git until the next PyPI release ships with GLM-OCR support:
+>
+> ```bash
+> pip install git+https://github.com/Blaizzy/mlx-vlm.git
+> ```
+
+Quick start:
 
 ```bash
-pip install mlx-vlm
-```
-
-Launch the server:
-
-```bash
+# In server environment
 mlx_vlm.server --trust-remote-code
 ```
 
@@ -142,22 +157,8 @@ pipeline:
   ocr_api:
     api_host: localhost
     api_port: 8080
-    model: mlx-community/GLM-OCR-bf16  # Required for mlx-vlm
-    ...
+    model: mlx-community/GLM-OCR-bf16 # Required for mlx-vlm
     api_path: /chat/completions
-```
-
-##### Update Configuration
-
-After launching the service, configure `config.yaml`:
-
-```yaml
-pipeline:
-  maas:
-    enabled: false # Disable MaaS mode (default)
-  ocr_api:
-    api_host: localhost # or your vLLM/SGLang server address
-    api_port: 8080
 ```
 
 ### SDK Usage Guide
