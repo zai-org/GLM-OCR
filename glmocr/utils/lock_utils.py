@@ -2,7 +2,7 @@
 
 import os
 import time
-import fcntl
+import portalocker
 
 from glmocr.utils.logging import get_logger
 
@@ -25,7 +25,7 @@ def acquire_conversion_lock(lock_file_path):
         lock_fd = os.open(lock_file_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
 
         # Try to acquire exclusive lock (non-blocking)
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        portalocker.lock(lock_fd, portalocker.LOCK_EX | portalocker.LOCK_NB)
 
         # Write current process info
         os.write(lock_fd, f"PID: {os.getpid()}, Time: {time.time()}".encode())
@@ -33,7 +33,7 @@ def acquire_conversion_lock(lock_file_path):
 
         logger.debug("Successfully acquired conversion lock: %s", lock_file_path)
         return lock_fd
-    except (OSError, IOError):
+    except (OSError, IOError, portalocker.exceptions.LockException):
         # Lock is held by another process
         if lock_fd:
             os.close(lock_fd)
@@ -50,7 +50,7 @@ def release_conversion_lock(lock_fd, lock_file_path):
     """
     try:
         if lock_fd is not None:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            portalocker.unlock(lock_fd)
             os.close(lock_fd)
 
         # Remove lock file
