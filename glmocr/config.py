@@ -74,12 +74,17 @@ class OCRApiConfig(_BaseConfig):
     api_scheme: Optional[str] = None
     api_path: str = "/v1/chat/completions"
     api_url: Optional[str] = None
+    model: Optional[str] = None  # Optional model name (required by Ollama/MLX)
     api_key: Optional[str] = None
 
     # Model name included in API requests.
     model: Optional[str] = None
     headers: Dict[str, str] = Field(default_factory=dict)
     verify_ssl: bool = False
+
+    # API mode: "openai" (default) or "ollama_generate"
+    # Use "ollama_generate" for Ollama's native /api/generate endpoint
+    api_mode: str = "openai"
 
     connect_timeout: int = 300
     request_timeout: int = 300

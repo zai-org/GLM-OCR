@@ -134,6 +134,13 @@ pipeline:
     api_port: 8080
 ```
 
+#### 方式 3: 其他部署选项
+
+针对特定部署场景，请查看详细指南：
+
+- **[Apple Silicon 使用 mlx-vlm](examples/mlx-deploy/README.md)** - 针对 Apple Silicon Mac 优化
+- **[Ollama 部署](examples/ollama-deploy/README.md)** - 使用 Ollama 进行简单的本地部署
+
 ### SDK 使用指南
 
 #### CLI

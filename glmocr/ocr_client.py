@@ -54,6 +54,10 @@ class OCRClient:
 
         self.api_key = config.api_key or os.getenv("GLMOCR_API_KEY")
         self.extra_headers = config.headers or {}
+        self.model = config.model  # Optional model name
+
+        # API mode: "openai" or "ollama_generate"
+        self.api_mode = getattr(config, "api_mode", "openai")
 
         # SSL verification
         self.verify_ssl = config.verify_ssl
@@ -168,18 +172,33 @@ class OCRClient:
                     sock.settimeout(10)
                     result = sock.connect_ex((self.api_host, self.api_port))
                     if result == 0:
-                        # Send a test request to the chat/completions endpoint
+                        # Send a test request
                         try:
-                            test_payload = {
-                                "messages": [
-                                    {
-                                        "role": "user",
-                                        "content": [{"type": "text", "text": "hello"}],
-                                    }
-                                ],
-                                "max_tokens": 10,
-                                "temperature": 0.1,
-                            }
+                            # Build test payload based on API mode
+                            if self.api_mode == "ollama_generate":
+                                test_payload = {
+                                    "model": self.model or "glm-ocr:latest",
+                                    "prompt": "hello",
+                                    "stream": False,
+                                    "options": {"num_predict": 10},
+                                }
+                            else:
+                                test_payload = {
+                                    "messages": [
+                                        {
+                                            "role": "user",
+                                            "content": [
+                                                {"type": "text", "text": "hello"}
+                                            ],
+                                        }
+                                    ],
+                                    "max_tokens": 10,
+                                    "temperature": 0.1,
+                                }
+                                # Inject model field if configured (required by Ollama/MLX)
+                                if self.model:
+                                    test_payload["model"] = self.model
+
                             headers = {
                                 "Content-Type": "application/json",
                                 **self.extra_headers,
@@ -237,6 +256,14 @@ class OCRClient:
         if self._session is None:
             self._session = self._make_session()
 
+        # Convert request format based on API mode
+        if self.api_mode == "ollama_generate":
+            request_data = self._convert_to_ollama_generate(request_data)
+        else:
+            # Inject model field if configured (required by Ollama/MLX)
+            if self.model:
+                request_data["model"] = self.model
+
         headers = {"Content-Type": "application/json", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -261,7 +288,40 @@ class OCRClient:
 
                 if response.status_code == 200:
                     result = response.json()
-                    output = result["choices"][0]["message"]["content"]
+
+                    # Parse response based on API mode
+                    if self.api_mode == "ollama_generate":
+                        # Ollama generate format: {"response": "...", "done": true, ...}
+                        # Check for error field first
+                        if "error" in result:
+                            error_msg = result.get("error", "Unknown error")
+                            logger.error("Ollama API returned error: %s", error_msg)
+                            return {"error": f"Ollama API error: {error_msg}"}, 500
+
+                        # Extract response field
+                        output = result.get("response")
+                        if output is None:
+                            logger.error(
+                                "Ollama API response missing 'response' field. Response: %s",
+                                str(result)[:500],
+                            )
+                            return {
+                                "error": "Invalid Ollama API response format: missing 'response' field"
+                            }, 500
+                    else:
+                        # OpenAI format: {"choices": [{"message": {"content": "..."}}]}
+                        try:
+                            output = result["choices"][0]["message"]["content"]
+                        except (KeyError, IndexError, TypeError) as e:
+                            logger.error(
+                                "Invalid OpenAI API response format: %s. Response: %s",
+                                str(e),
+                                str(result)[:500],
+                            )
+                            return {
+                                "error": f"Invalid OpenAI API response format: {str(e)}"
+                            }, 500
+
                     return {"choices": [{"message": {"content": output.strip()}}]}, 200
 
                 status = int(response.status_code)
@@ -316,3 +376,97 @@ class OCRClient:
             "error": f"API request failed after {total_attempts} attempts",
             "detail": last_error,
         }, 500
+
+    def _convert_to_ollama_generate(self, request_data: Dict) -> Dict:
+        """Convert OpenAI chat format to Ollama generate format.
+
+        OpenAI format:
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "..."},
+                        {"type": "image_url", "image_url": "data:image/...;base64,..."}
+                    ]
+                }
+            ],
+            "max_tokens": 100,
+            ...
+        }
+
+        Ollama generate format:
+        {
+            "model": "glm-ocr:latest",
+            "prompt": "...",
+            "images": ["base64_string"],
+            "stream": false,
+            "options": {
+                "num_predict": 100,
+                ...
+            }
+        }
+        """
+        messages = request_data.get("messages", [])
+
+        # Extract prompt and images from the last user message
+        prompt = ""
+        images = []
+
+        # Find the last user message
+        last_user_msg = None
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user_msg = msg
+                break
+
+        if last_user_msg:
+            content = last_user_msg.get("content", "")
+
+            if isinstance(content, str):
+                prompt = content
+            elif isinstance(content, list):
+                for item in content:
+                    if item.get("type") == "text":
+                        prompt = item.get("text", "")
+                    elif item.get("type") == "image_url":
+                        # Extract base64 from data URI
+                        image_url = item.get("image_url", "")
+                        if isinstance(image_url, dict):
+                            image_url = image_url.get("url", "")
+
+                        # Parse data:image/...;base64,<data>
+                        if image_url.startswith("data:"):
+                            parts = image_url.split(",", 1)
+                            if len(parts) == 2:
+                                images.append(parts[1])
+                        else:
+                            images.append(image_url)
+
+        # Build Ollama generate request
+        ollama_request = {
+            "model": self.model or "glm-ocr:latest",
+            "prompt": prompt,
+            "stream": False,
+        }
+
+        if images:
+            ollama_request["images"] = images
+
+        # Map parameters to Ollama options
+        options = {}
+        if "max_tokens" in request_data:
+            options["num_predict"] = request_data["max_tokens"]
+        if "temperature" in request_data:
+            options["temperature"] = request_data["temperature"]
+        if "top_p" in request_data:
+            options["top_p"] = request_data["top_p"]
+        if "top_k" in request_data:
+            options["top_k"] = request_data["top_k"]
+        if "repetition_penalty" in request_data:
+            options["repeat_penalty"] = request_data["repetition_penalty"]
+
+        if options:
+            ollama_request["options"] = options
+
+        return ollama_request
