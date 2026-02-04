@@ -112,7 +112,7 @@ pip install git+https://github.com/huggingface/transformers.git
 
 Edit `glmocr/config.yaml` (or create a custom config file) to point the SDK
 at the mlx-vlm server. The key difference from vLLM/SGLang is the `model`
-field, which is **required** for mlx-vlm:
+field, which is **required** for mlx-vlm, and api_path (no `/v1` prefix):
 
 ```yaml
 pipeline:
@@ -123,7 +123,7 @@ pipeline:
     api_host: localhost
     api_port: 8080 # Must match the mlx-vlm server port
     model: mlx-community/GLM-OCR-bf16 # Required for mlx-vlm
-    api_path: /chat/completions
+    api_path: /chat/completions # Remove /v1 prefix
 ```
 
 ### Full Configuration Reference
@@ -143,7 +143,7 @@ pipeline:
 
     # URL construction: {api_scheme}://{api_host}:{api_port}{api_path}
     api_scheme: null # null = auto (https if port 443, else http)
-    api_path: /chat/completions
+    api_path: /chat/completions # Remove /v1 prefix
     api_url: null # Full URL override (optional)
 
     # Authentication (not needed for local mlx-vlm)

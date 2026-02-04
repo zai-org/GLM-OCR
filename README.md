@@ -148,7 +148,7 @@ Quick start:
 mlx_vlm.server --trust-remote-code
 ```
 
-Configure `config.yaml` – note that `model` is **required** for mlx-vlm (unlike vLLM/SGLang):
+Configure `config.yaml` – note that `model` is **required** for mlx-vlm (unlike vLLM/SGLang) and api_path does not include /v1 prefix:
 
 ```yaml
 pipeline:
@@ -158,7 +158,7 @@ pipeline:
     api_host: localhost
     api_port: 8080
     model: mlx-community/GLM-OCR-bf16 # Required for mlx-vlm
-    api_path: /chat/completions
+    api_path: /chat/completions # Remove /v1 prefix
 ```
 
 ### SDK Usage Guide
