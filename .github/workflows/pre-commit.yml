@@ -17,7 +17,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install pre-commit
         run: |
@@ -33,5 +33,4 @@ jobs:
             pre-commit-
 
       - name: Run pre-commit
-        run: pre-commit run --all-files --show-diff-on-failure || true
-        continue-on-error: true
+        run: pre-commit run -a --show-diff-on-failure
