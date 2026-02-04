@@ -234,7 +234,7 @@ faster.
 ```
 +------------------+        HTTP (OpenAI-compatible)        +-------------------+
 |  GLM-OCR SDK     | -------------------------------------> |  mlx-vlm server   |
-|  (sdk-env)       |    POST /chat/completionsmmm           |  (mlx-env)        |
+|  (sdk-env)       |    POST /chat/completions              |  (mlx-env)        |
 |                  | <------------------------------------- |                   |
 |  - Layout detect |        JSON response                   |  - GLM-OCR model  |
 |  - Region crop   |                                        |  - Metal GPU      |
