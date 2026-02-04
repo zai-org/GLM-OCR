@@ -42,8 +42,8 @@ pip install glmocr
 git clone https://github.com/zai-org/glm-ocr.git
 cd glm-ocr && pip install -e .
 
-# 从源码安装 transformers
-pip install git+https://github.com/huggingface/transformers.git
+# 安装兼容版本的 transformers（vLLM 需要 < 5）
+pip install "transformers>=4.56,<5"
 ```
 
 ### 模型服务部署
@@ -93,7 +93,7 @@ docker pull vllm/vllm-openai:nightly
 启动服务：
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+pip install "transformers>=4.56,<5"
 vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080
 
 # 打开MTP，获得更好的推理性能
@@ -113,7 +113,7 @@ pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 启动服务：
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+pip install "transformers>=4.56,<5"
 python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080
 
 # 打开MTP，获得更好的推理性能

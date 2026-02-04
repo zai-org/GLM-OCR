@@ -40,8 +40,8 @@ We provide an SDK for using GLM-OCR more efficiently and conveniently.
 git clone https://github.com/zai-org/glm-ocr.git
 cd glm-ocr && pip install -e .
 
-# Install transformers from source
-pip install git+https://github.com/huggingface/transformers.git
+# Install a compatible transformers version (vLLM requires < 5)
+pip install "transformers>=4.56,<5"
 ```
 
 ### Model Deployment
@@ -91,7 +91,7 @@ docker pull vllm/vllm-openai:nightly
 Launch the service:
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+pip install "transformers>=4.56,<5"
 
 # Run with MTP for better performance
 vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080 --speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'
@@ -110,7 +110,7 @@ pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 Launch the service:
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+pip install "transformers>=4.56,<5"
 
 # Run with MTP for better performance
 python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4
