@@ -33,6 +33,9 @@ class OCRApiConfig(_BaseConfig):
     api_path: str = "/v1/chat/completions"
     api_url: Optional[str] = None
     api_key: Optional[str] = None
+
+    # Model name included in API requests.
+    model: Optional[str] = None
     headers: Dict[str, str] = Field(default_factory=dict)
     verify_ssl: bool = False
 

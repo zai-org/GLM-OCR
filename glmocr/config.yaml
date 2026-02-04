@@ -63,6 +63,11 @@ pipeline:
     api_host: 127.0.0.1
     api_port: 8080
 
+    # Model name included in API requests.
+    # Required for mlx_vlm.server (e.g. "mlx-community/GLM-OCR-bf16").
+    # Set to null when using vLLM/SGLang (model is selected at server startup).
+    model: null
+
     # URL construction: {api_scheme}://{api_host}:{api_port}{api_path}
     # Or set api_url directly to override
     api_scheme: null # null = auto (https if port 443, else http)

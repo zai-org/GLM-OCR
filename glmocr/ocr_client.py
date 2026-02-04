@@ -93,7 +93,7 @@ class OCRClient:
         self._pool_maxsize = pool_size if pool_size is not None else 128
 
         # Model information
-        self.model = None
+        self.model = config.model
 
     def _make_session(self) -> requests.Session:
         """Create a Session with a larger connection pool for concurrent use."""
@@ -198,7 +198,8 @@ class OCRClient:
                                     "Successfully connected to API server at %s",
                                     self.api_url,
                                 )
-                                self.model = "default"
+                                if not self.model:
+                                    self.model = "default"
                                 return
                             else:
                                 logger.warning(
@@ -239,6 +240,10 @@ class OCRClient:
         headers = {"Content-Type": "application/json", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+
+        # Inject model if configured
+        if self.model and "model" not in request_data:
+            request_data["model"] = self.model
 
         total_attempts = int(self.retry_max_attempts) + 1
         last_error: Optional[str] = None
