@@ -172,12 +172,16 @@ class OCRClient:
                                 "messages": [
                                     {
                                         "role": "user",
-                                        "content": [{"type": "text", "text": "hello"}],
+                                        "content": "hello",  # Simple string format for compatibility
                                     }
                                 ],
                                 "max_tokens": 10,
                                 "temperature": 0.1,
                             }
+                            # Inject model field if configured (required by Ollama/MLX)
+                            if self.model:
+                                test_payload["model"] = self.model
+
                             headers = {
                                 "Content-Type": "application/json",
                                 **self.extra_headers,
@@ -199,8 +203,9 @@ class OCRClient:
                                 return
                             else:
                                 logger.warning(
-                                    "API server returned status code: %s",
+                                    "API server returned status code: %s, response: %s",
                                     response.status_code,
+                                    response.text[:500] if response.text else "no body",
                                 )
                         except requests.exceptions.RequestException as e:
                             logger.debug("Failed to connect to API: %s", e)

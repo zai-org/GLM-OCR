@@ -57,7 +57,7 @@ pipeline:
   # - You need offline/air-gapped operation
   # - You want to customize the pipeline (layout detection, prompts, etc.)
 
-  # OCR API client configuration (for self-hosted vLLM/SGLang)
+  # OCR API client configuration (for self-hosted vLLM/SGLang/Ollama)
   ocr_api:
     # Basic connection
     api_host: 127.0.0.1
