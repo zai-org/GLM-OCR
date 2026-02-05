@@ -112,6 +112,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             if isinstance(key, str):
                 if key in label2id:
                     class_thresholds[label2id[key]] = float(value)
+                else:
+                    logger.warning(
+                        "Unknown class name '%s' in threshold_by_class; "
+                        "this entry will be ignored. Known classes: %s",
+                        key,
+                        ", ".join(sorted(label2id.keys())),
+                    )
             else:
                 class_thresholds[int(key)] = float(value)
 
