@@ -349,6 +349,7 @@ def apply_layout_postprocess(
             boxes_array = unclip_boxes(boxes_array, layout_unclip_ratio)
 
         # Convert to PaddleOCR format
+        img_width, img_height = img_size
         image_results = []
         for i, box_data in enumerate(boxes_array):
             cls_id = int(box_data[0])
@@ -357,13 +358,22 @@ def apply_layout_postprocess(
             order = int(box_data[6]) if box_data[6] > 0 else None
             label_name = id2label.get(cls_id, f"class_{cls_id}")
 
-            # Get polygon points (try to find original index)
+            # Clamp bbox to image boundaries
+            x1 = max(0, min(float(x1), img_width))
+            y1 = max(0, min(float(y1), img_height))
+            x2 = max(0, min(float(x2), img_width))
+            y2 = max(0, min(float(y2), img_height))
+
+            # Skip invalid bbox
+            if x1 >= x2 or y1 >= y2:
+                continue
+
             # Since we may have filtered boxes, we need to match by coordinates
             poly = None
             if len(polygon_points) > 0:
                 # Try to find matching polygon by comparing coordinates
                 for orig_idx in range(len(boxes)):
-                    if np.allclose(boxes[orig_idx], [x1, y1, x2, y2], atol=1.0):
+                    if np.allclose(boxes[orig_idx], box_data[2:6], atol=1.0):
                         if orig_idx < len(polygon_points):
                             poly = polygon_points[orig_idx].astype(np.float32)
                         break
@@ -373,6 +383,10 @@ def apply_layout_postprocess(
                 poly = np.array(
                     [[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32
                 )
+            else:
+                # Clamp polygon points to image boundaries
+                poly[:, 0] = np.clip(poly[:, 0], 0, img_width)
+                poly[:, 1] = np.clip(poly[:, 1], 0, img_height)
 
             image_results.append(
                 {
