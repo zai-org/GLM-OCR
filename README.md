@@ -76,6 +76,9 @@ Input note (MaaS): the upstream API accepts `file` as a URL or a `data:<mime>;ba
 If you have raw base64 without the `data:` prefix, wrap it as a data URI (recommended). The SDK will
 auto-wrap local file paths / bytes / raw base64 into a data URI when calling MaaS.
 
+⚠️ **Important**: OpenAI-compatible endpoints (including OpenAI's official API) do **not** accept `file://` paths.
+For local files, use `data:image` URIs or the Zhipu SDK, which automatically handles file encoding.
+
 API documentation: https://docs.bigmodel.cn/cn/guide/models/vlm/glm-ocr
 
 #### Option 2: Self-host with vLLM / SGLang

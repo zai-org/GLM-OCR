@@ -73,8 +73,11 @@ pipeline:
 - 无需本地处理，无需 GPU
 
 输入说明（MaaS）：上游接口的 `file` 支持传 URL 或 `data:<mime>;base64,...` 形式的 data URI。
-如果你手上只有“纯 base64”（没有 `data:` 前缀），建议先包装成 data URI。SDK 在 MaaS 模式下会自动
+如果你手上只有"纯 base64"（没有 `data:` 前缀），建议先包装成 data URI。SDK 在 MaaS 模式下会自动
 把本地文件路径 / bytes / 纯 base64 包装成 data URI 再发送。
+
+⚠️ **重要提示**：OpenAI 兼容接口（包括 OpenAI 官方 API）**不支持** `file://` 路径。
+对于本地文件，请使用 `data:image` URI 或智谱 SDK，后者会自动处理文件编码。
 
 API 文档：https://docs.bigmodel.cn/cn/guide/models/vlm/glm-ocr
 
