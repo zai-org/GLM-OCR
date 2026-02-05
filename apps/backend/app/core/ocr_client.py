@@ -208,8 +208,12 @@ class LayoutAndOCRClient:
 
                         # 解析JSON结果
                         try:
-                            all_results = json.loads(content)
-
+                            # 检查 content 的类型，如果已经是列表则直接使用
+                            if isinstance(content, list):
+                                all_results = content
+                            else:
+                                all_results = json.loads(content)
+                                
                             # 验证返回格式
                             if not isinstance(all_results, list):
                                 raise ValueError("响应格式错误：期望返回列表")
