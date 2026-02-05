@@ -35,6 +35,8 @@ We provide an SDK for using GLM-OCR more efficiently and conveniently.
 
 ### Install SDK
 
+> [UV Installation](https://docs.astral.sh/uv/getting-started/installation/)
+
 ```bash
 # Install from source
 git clone https://github.com/zai-org/glm-ocr.git

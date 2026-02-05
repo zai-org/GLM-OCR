@@ -35,6 +35,8 @@ GLM-OCR 是一款面向复杂文档理解的多模态 OCR 模型，基于 GLM-V 
 
 ### 安装 SDK
 
+> [UV 安装](https://docs.astral.sh/uv/getting-started/installation/)
+
 ```bash
 # 从源码安装
 git clone https://github.com/zai-org/glm-ocr.git
