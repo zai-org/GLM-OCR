@@ -38,10 +38,12 @@ We provide an SDK for using GLM-OCR more efficiently and conveniently.
 ```bash
 # Install from source
 git clone https://github.com/zai-org/glm-ocr.git
-cd glm-ocr && pip install -e .
+cd glm-ocr
+uv venv --python 3.12 --seed && source .venv/bin/activate
+uv pip install -e .
 
 # Install transformers from source
-pip install git+https://github.com/huggingface/transformers.git
+uv pip install git+https://github.com/huggingface/transformers.git
 ```
 
 ### Model Deployment
@@ -83,7 +85,7 @@ Deploy the GLM-OCR model locally for full control. The SDK provides the complete
 Install vLLM:
 
 ```bash
-pip install -U vllm --extra-index-url https://wheels.vllm.ai/nightly
+uv pip install -U vllm --torch-backend=auto --extra-index-url https://wheels.vllm.ai/nightly
 # Or use Docker
 docker pull vllm/vllm-openai:nightly
 ```
@@ -91,7 +93,7 @@ docker pull vllm/vllm-openai:nightly
 Launch the service:
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+uv pip install git+https://github.com/huggingface/transformers.git
 
 # Run with MTP for better performance
 vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080 --speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'
@@ -104,13 +106,13 @@ Install SGLang:
 ```bash
 docker pull lmsysorg/sglang:dev
 # Or build from source
-pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
+uv pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 ```
 
 Launch the service:
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+uv pip install git+https://github.com/huggingface/transformers.git
 
 # Run with MTP for better performance
 python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4

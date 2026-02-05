@@ -36,14 +36,14 @@ GLM-OCR 是一款面向复杂文档理解的多模态 OCR 模型，基于 GLM-V 
 ### 安装 SDK
 
 ```bash
-pip install glmocr
-
-# 或从源码安装
+# 从源码安装
 git clone https://github.com/zai-org/glm-ocr.git
-cd glm-ocr && pip install -e .
+cd glm-ocr
+uv venv --python 3.12 --seed && source .venv/bin/activate
+uv pip install -e .
 
 # 从源码安装 transformers
-pip install git+https://github.com/huggingface/transformers.git
+uv pip install git+https://github.com/huggingface/transformers.git
 ```
 
 ### 模型服务部署
@@ -85,7 +85,7 @@ API 文档：https://docs.bigmodel.cn/cn/guide/models/vlm/glm-ocr
 安装 vLLM：
 
 ```bash
-pip install -U vllm --extra-index-url https://wheels.vllm.ai/nightly
+uv pip install -U vllm --torch-backend=auto --extra-index-url https://wheels.vllm.ai/nightly
 # 或使用 Docker
 docker pull vllm/vllm-openai:nightly
 ```
@@ -93,7 +93,7 @@ docker pull vllm/vllm-openai:nightly
 启动服务：
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+uv pip install git+https://github.com/huggingface/transformers.git
 vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080
 
 # 打开MTP，获得更好的推理性能
@@ -107,13 +107,13 @@ vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080 --speculativ
 ```bash
 docker pull lmsysorg/sglang:dev
 # 或从源码安装
-pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
+uv pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 ```
 
 启动服务：
 
 ```bash
-pip install git+https://github.com/huggingface/transformers.git
+uv pip install git+https://github.com/huggingface/transformers.git
 python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080
 
 # 打开MTP，获得更好的推理性能
