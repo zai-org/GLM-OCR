@@ -83,7 +83,7 @@ pipeline:
 
     # Timeouts (seconds)
     connect_timeout: 30
-    request_timeout: 120
+    request_timeout: 300
 
     # Retry settings (helps with transient 429/5xx and overloaded OCR servers)
     retry_max_attempts: 2
