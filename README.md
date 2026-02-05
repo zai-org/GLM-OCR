@@ -93,6 +93,7 @@ docker pull vllm/vllm-openai:nightly
 Launch the service:
 
 ```bash
+# In docker container, uv may not be need for transformers install
 uv pip install git+https://github.com/huggingface/transformers.git
 
 # Run with MTP for better performance
@@ -112,6 +113,7 @@ uv pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 Launch the service:
 
 ```bash
+# In docker container, uv may not be need for transformers install
 uv pip install git+https://github.com/huggingface/transformers.git
 
 # Run with MTP for better performance

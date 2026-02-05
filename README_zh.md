@@ -93,6 +93,7 @@ docker pull vllm/vllm-openai:nightly
 启动服务：
 
 ```bash
+# 在 docker 容器中，或许不在需要 uv 来安装transformers
 uv pip install git+https://github.com/huggingface/transformers.git
 vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080
 
@@ -113,6 +114,7 @@ uv pip install git+https://github.com/sgl-project/sglang.git#subdirectory=python
 启动服务：
 
 ```bash
+# 在 docker 容器中，或许不在需要 uv 来安装transformers
 uv pip install git+https://github.com/huggingface/transformers.git
 python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080
 
