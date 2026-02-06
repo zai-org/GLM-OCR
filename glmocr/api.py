@@ -7,6 +7,15 @@ Two modes are supported:
    No GPU required; the cloud handles all processing.
 2. Self-hosted Mode (maas.enabled=false): Uses local vLLM/SGLang service.
    Requires GPU; SDK handles layout detection, parallel OCR, etc.
+
+Agent-friendly usage::
+
+    # Only needs GLMOCR_API_KEY in environment (or pass api_key directly)
+    from glmocr import GlmOcr
+
+    parser = GlmOcr(api_key="sk-xxx", mode="maas")
+    results = parser.parse("document.png")
+    print(results[0].to_dict())
 """
 
 import re
@@ -29,30 +38,72 @@ class GlmOcr:
     Provides a Python API for document parsing. Automatically detects whether
     to use MaaS mode or self-hosted mode based on config.
 
-    Example:
-        from glmocr.api import GlmOcr
+    Configuration priority:  constructor args > env vars > YAML > defaults.
 
-        # Initialize (pipeline is created on instantiation)
-        parser = GlmOcr(config_path="config.yaml")
+    Examples::
 
-        # Predict (returns list of PipelineResult, one per input unit)
-        results = parser.predict("image1.png")
-        for result in results:
-            print(result.json_result)
-            result.save(output_dir="./output")
+        # --- Agent-friendly: zero YAML ---
+        import glmocr
+        parser = glmocr.GlmOcr(api_key="sk-xxx")          # MaaS auto-enabled
+        parser = glmocr.GlmOcr(mode="maas")                # uses GLMOCR_API_KEY env
 
-        # Cleanup
-        parser.close()
+        # --- Classic: YAML-based ---
+        parser = glmocr.GlmOcr(config_path="config.yaml")
+
+        # --- Parse ---
+        results = parser.parse("image.png")
+        for r in results:
+            print(r.markdown_result)
+            print(r.to_dict())           # structured, JSON-serialisable
+            r.save(output_dir="./output")
+
+        parser.close()   # or use `with GlmOcr(...) as parser:`
     """
 
-    def __init__(self, config_path: Optional[str] = None):
-        """Initialize GlmOcr and create the pipeline.
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        *,
+        api_key: Optional[str] = None,
+        api_url: Optional[str] = None,
+        model: Optional[str] = None,
+        mode: Optional[str] = None,
+        timeout: Optional[int] = None,
+        enable_layout: Optional[bool] = None,
+        log_level: Optional[str] = None,
+    ):
+        """Initialize GlmOcr.
+
+        All keyword arguments are optional.  When provided they override any
+        value coming from the YAML file or ``GLMOCR_*`` environment variables.
 
         Args:
-            config_path: Config file path. If None, loads the default config.
+            config_path: YAML config file path (optional).
+            api_key:  API key for MaaS / self-hosted OCR API.
+            api_url:  MaaS API endpoint URL.
+            model:    Model name.
+            mode:     ``"maas"`` (cloud) or ``"selfhosted"`` (local vLLM/SGLang).
+                      If *api_key* is provided without an explicit *mode*,
+                      mode defaults to ``"maas"``.
+            timeout:  Request timeout in seconds.
+            enable_layout: Whether to run layout detection.
+            log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
         """
-        # Load config (instance-based; no global singleton)
-        self.config_model = load_config(config_path)
+        # If user provides api_key but no explicit mode, default to MaaS.
+        if api_key is not None and mode is None:
+            mode = "maas"
+
+        # Build config: overrides > env vars > YAML > defaults
+        self.config_model = load_config(
+            config_path,
+            api_key=api_key,
+            api_url=api_url,
+            model=model,
+            mode=mode,
+            timeout=timeout,
+            enable_layout=enable_layout,
+            log_level=log_level,
+        )
         # Apply logging config for API/SDK usage.
         ensure_logging_configured(
             level=self.config_model.logging.level,
@@ -426,8 +477,32 @@ def parse(
     images: Union[str, List[str]],
     config_path: Optional[str] = None,
     save_layout_visualization: bool = True,
-) -> Union[PipelineResult, List[PipelineResult]]:
-    """Convenience function: predict / parse images or documents.
+    *,
+    api_key: Optional[str] = None,
+    api_url: Optional[str] = None,
+    model: Optional[str] = None,
+    mode: Optional[str] = None,
+    timeout: Optional[int] = None,
+    enable_layout: Optional[bool] = None,
+    log_level: Optional[str] = None,
+) -> List[PipelineResult]:
+    """Convenience function: parse images or documents in one call.
+
+    Creates a :class:`GlmOcr` instance, runs parsing, and cleans up.
+    All keyword arguments are forwarded to the ``GlmOcr`` constructor.
+
+    Examples::
+
+        import glmocr
+
+        # Minimal – only needs GLMOCR_API_KEY env var
+        results = glmocr.parse("image.png")
+
+        # Explicit API key
+        results = glmocr.parse("image.png", api_key="sk-xxx")
+
+        # Self-hosted mode
+        results = glmocr.parse("image.png", mode="selfhosted")
 
     The return type mirrors the input type:
     - ``str`` → ``PipelineResult``
@@ -437,6 +512,13 @@ def parse(
         images: Image path or URL (single ``str`` or ``List[str]``).
         config_path: Config file path.
         save_layout_visualization: Whether to save layout visualization.
+        api_key:  API key.
+        api_url:  MaaS API endpoint URL.
+        model:    Model name.
+        mode:     ``"maas"`` or ``"selfhosted"``.
+        timeout:  Request timeout in seconds.
+        enable_layout: Whether to run layout detection.
+        log_level: Logging level.
 
     Returns:
         A single ``PipelineResult`` or a list, matching the input type.
@@ -449,5 +531,14 @@ def parse(
         for r in results:
             r.save(output_dir="./output")
     """
-    with GlmOcr(config_path=config_path) as parser:
+    with GlmOcr(
+        config_path=config_path,
+        api_key=api_key,
+        api_url=api_url,
+        model=model,
+        mode=mode,
+        timeout=timeout,
+        enable_layout=enable_layout,
+        log_level=log_level,
+    ) as parser:
         return parser.parse(images, save_layout_visualization=save_layout_visualization)

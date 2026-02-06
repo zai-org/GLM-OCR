@@ -9,7 +9,7 @@ import json
 import traceback
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from glmocr.utils.logging import get_logger
 from glmocr.utils.markdown_utils import crop_and_replace_images
@@ -108,6 +108,33 @@ class BaseParserResult(ABC):
             md_file = output_path / f"{base_name}.md"
             with open(md_file, "w", encoding="utf-8") as f:
                 f.write(md_text)
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serialisable dict of the result.
+
+        Useful for agents and programmatic consumers that need a structured
+        representation without touching the file system.
+        """
+        d: dict = {
+            "json_result": self.json_result,
+            "markdown_result": self.markdown_result or "",
+            "original_images": self.original_images,
+        }
+        # Include optional metadata set by MaaS mode.
+        for attr in ("_usage", "_data_info", "_error"):
+            val = getattr(self, attr, None)
+            if val is not None:
+                d[attr.lstrip("_")] = val
+        return d
+
+    def to_json(self, **kwargs: Any) -> str:
+        """Serialise the result to a JSON string.
+
+        Keyword arguments are forwarded to :func:`json.dumps`.
+        """
+        kwargs.setdefault("ensure_ascii", False)
+        kwargs.setdefault("indent", 2)
+        return json.dumps(self.to_dict(), **kwargs)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(images={len(self.original_images)})"
