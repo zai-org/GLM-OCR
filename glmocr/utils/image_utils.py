@@ -318,18 +318,71 @@ def pdf_to_images_pil(
         )
     import pypdfium2 as pdfium
 
-    pdf = pdfium.PdfDocument(pdf_path)
-    page_count = len(pdf)
-    if end_page_id is None or end_page_id < 0:
-        end_page_id = page_count - 1
-    if end_page_id >= page_count:
-        end_page_id = page_count - 1
-    images = []
-    for i in range(start_page_id, end_page_id + 1):
-        page = pdf[i]
-        image, _ = _page_to_image(
-            page, dpi=dpi, max_width_or_height=max_width_or_height
+    try:
+        pdf = pdfium.PdfDocument(pdf_path)
+        page_count = len(pdf)
+        if end_page_id is None or end_page_id < 0:
+            end_page_id = page_count - 1
+        if end_page_id >= page_count:
+            end_page_id = page_count - 1
+        images = []
+        for i in range(start_page_id, end_page_id + 1):
+            page = pdf[i]
+            try:
+                image, _ = _page_to_image(
+                    page, dpi=dpi, max_width_or_height=max_width_or_height
+                )
+                images.append(image)
+            finally:
+                page.close()
+        return images
+    finally:
+        pdf.close()
+
+
+def pdf_to_images_pil_iter(
+    pdf_path: str,
+    dpi: int = 200,
+    max_width_or_height: int = 3500,
+    start_page_id: int = 0,
+    end_page_id: int = None,
+):
+    """Convert PDF to PIL Images one page at a time (generator).
+
+    Use for streaming: each page is rendered and yielded immediately so
+    downstream can start processing before the whole PDF is loaded.
+
+    Args:
+        pdf_path: PDF file path.
+        dpi: Render DPI.
+        max_width_or_height: Max width or height.
+        start_page_id: Start page index (0-based).
+        end_page_id: End page index (inclusive); None = last page.
+
+    Yields:
+        PIL.Image per page.
+    """
+    if not PYPDFIUM2_AVAILABLE:
+        raise ImportError(
+            "PDF support requires pypdfium2. Install with: pip install pypdfium2"
         )
-        images.append(image)
-    pdf.close()
-    return images
+    import pypdfium2 as pdfium
+
+    try:
+        pdf = pdfium.PdfDocument(pdf_path)
+        page_count = len(pdf)
+        if end_page_id is None or end_page_id < 0:
+            end_page_id = page_count - 1
+        if end_page_id >= page_count:
+            end_page_id = page_count - 1
+        for i in range(start_page_id, end_page_id + 1):
+            page = pdf[i]
+            try:
+                image, _ = _page_to_image(
+                    page, dpi=dpi, max_width_or_height=max_width_or_height
+                )
+                yield image
+            finally:
+                page.close()
+    finally:
+        pdf.close()
