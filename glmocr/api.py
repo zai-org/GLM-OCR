@@ -10,7 +10,7 @@ Two modes are supported:
 """
 
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, overload
 from pathlib import Path
 
 from glmocr.config import load_config
@@ -81,40 +81,69 @@ class GlmOcr:
             self._pipeline.start()
             logger.info("GLM-OCR initialized in self-hosted mode")
 
+    @overload
+    def parse(
+        self,
+        images: str,
+        save_layout_visualization: bool = ...,
+        **kwargs: Any,
+    ) -> PipelineResult:
+        ...
+
+    @overload
+    def parse(
+        self,
+        images: List[str],
+        save_layout_visualization: bool = ...,
+        **kwargs: Any,
+    ) -> List[PipelineResult]:
+        ...
+
     def parse(
         self,
         images: Union[str, List[str]],
         save_layout_visualization: bool = True,
-        **kwargs,
-    ) -> List[PipelineResult]:
+        **kwargs: Any,
+    ) -> Union[PipelineResult, List[PipelineResult]]:
         """Predict / parse images or documents.
 
         Supports local paths and URLs (file://, http://, https://, data:).
         Supports image files (jpg, png, bmp, gif, webp) and PDF files.
 
+        The return type mirrors the input type:
+        - Pass a **single path** (``str``) → get a single ``PipelineResult``.
+        - Pass a **list of paths** (``List[str]``) → get a ``List[PipelineResult]``.
+
         Args:
-            images: Image path/URL (single or list).
+            images: Image path/URL — a single ``str`` or a ``list`` of strings.
             save_layout_visualization: Whether to save layout visualization artifacts.
             **kwargs: Additional parameters for MaaS mode (return_crop_images,
                      need_layout_visualization, start_page_id, end_page_id, etc.)
 
         Returns:
-            List[PipelineResult]: One result per input (one image or one PDF). Use
-            result.save() to persist each.
+            A single ``PipelineResult`` when *images* is a ``str``, or a list of
+            ``PipelineResult`` when *images* is a ``List[str]``.
 
         Example:
-            results = parser.parse("image.png")
+            # Single file — returns one PipelineResult directly
+            result = parser.parse("image.png")
+            result.save(output_dir="./output")
+
+            # Multiple files — returns a list
             results = parser.parse(["img1.png", "doc.pdf"])
             for r in results:
                 r.save(output_dir="./output")
         """
-        if isinstance(images, str):
+        _single = isinstance(images, str)
+        if _single:
             images = [images]
 
         if self._use_maas:
-            return self._parse_maas(images, save_layout_visualization, **kwargs)
+            result_list = self._parse_maas(images, save_layout_visualization, **kwargs)
         else:
-            return self._parse_selfhosted(images, save_layout_visualization)
+            result_list = self._parse_selfhosted(images, save_layout_visualization)
+
+        return result_list[0] if _single else result_list
 
     def _parse_maas(
         self,
@@ -375,23 +404,48 @@ class GlmOcr:
 
 
 # Convenience function
+@overload
+def parse(
+    images: str,
+    config_path: Optional[str] = ...,
+    save_layout_visualization: bool = ...,
+) -> PipelineResult:
+    ...
+
+
+@overload
+def parse(
+    images: List[str],
+    config_path: Optional[str] = ...,
+    save_layout_visualization: bool = ...,
+) -> List[PipelineResult]:
+    ...
+
+
 def parse(
     images: Union[str, List[str]],
     config_path: Optional[str] = None,
     save_layout_visualization: bool = True,
-) -> List[PipelineResult]:
+) -> Union[PipelineResult, List[PipelineResult]]:
     """Convenience function: predict / parse images or documents.
 
+    The return type mirrors the input type:
+    - ``str`` → ``PipelineResult``
+    - ``List[str]`` → ``List[PipelineResult]``
+
     Args:
-        images: Image path or URL (single or list).
+        images: Image path or URL (single ``str`` or ``List[str]``).
         config_path: Config file path.
         save_layout_visualization: Whether to save layout visualization.
 
     Returns:
-        List[PipelineResult]: One result per input unit.
+        A single ``PipelineResult`` or a list, matching the input type.
 
     Example:
-        results = predict("image.png")
+        result = parse("image.png")
+        result.save(output_dir="./output")
+
+        results = parse(["img1.png", "doc.pdf"])
         for r in results:
             r.save(output_dir="./output")
     """

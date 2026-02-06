@@ -150,7 +150,7 @@ def main():
                 "true" if glm_parser.enable_layout else "false",
             )
 
-            # Process each file (parse() returns list of PipelineResult, one per unit)
+            # Process each file (parse() with str returns a single PipelineResult)
             total_files = len(image_paths)
             for idx, image_path in enumerate(image_paths, 1):
                 file_name = Path(image_path).name
@@ -158,37 +158,36 @@ def main():
                 logger.info("=== Parsing: %s (%d/%d) ===", file_name, idx, total_files)
 
                 try:
-                    results = glm_parser.parse(
+                    result = glm_parser.parse(
                         image_path, save_layout_visualization=save_layout_vis
                     )
-                    for result in results:
-                        # Output
-                        if args.stdout:
-                            stem = (
-                                Path(result.original_images[0]).stem
-                                if result.original_images
-                                else file_name
+                    # Output
+                    if args.stdout:
+                        stem = (
+                            Path(result.original_images[0]).stem
+                            if result.original_images
+                            else file_name
+                        )
+                        print(f"\n=== {stem} - JSON Result ===")
+                        print(
+                            json.dumps(
+                                result.json_result,
+                                ensure_ascii=False,
+                                indent=2,
                             )
-                            print(f"\n=== {stem} - JSON Result ===")
-                            print(
-                                json.dumps(
-                                    result.json_result,
-                                    ensure_ascii=False,
-                                    indent=2,
-                                )
-                                if isinstance(result.json_result, (dict, list))
-                                else result.json_result
-                            )
-                            if result.markdown_result and not args.json_only:
-                                print(f"\n=== {stem} - Markdown Result ===")
-                                print(result.markdown_result)
+                            if isinstance(result.json_result, (dict, list))
+                            else result.json_result
+                        )
+                        if result.markdown_result and not args.json_only:
+                            print(f"\n=== {stem} - Markdown Result ===")
+                            print(result.markdown_result)
 
-                        # Save to files by default (unless --no-save)
-                        if not args.no_save:
-                            result.save(
-                                output_dir=args.output,
-                                save_layout_visualization=save_layout_vis,
-                            )
+                    # Save to files by default (unless --no-save)
+                    if not args.no_save:
+                        result.save(
+                            output_dir=args.output,
+                            save_layout_visualization=save_layout_vis,
+                        )
 
                 except Exception as e:
                     logger.error("Failed: %s: %s", file_name, e)

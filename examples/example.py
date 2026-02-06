@@ -52,9 +52,8 @@ def main() -> int:
                 continue
 
             try:
-                results = parser.parse(str(p))
-                for result in results:
-                    result.save(output_dir=output_dir)
+                result = parser.parse(str(p))
+                result.save(output_dir=output_dir)
             except Exception as e:
                 print(f"Failed: {p.name}: {e}")
                 continue
