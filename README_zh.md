@@ -100,7 +100,7 @@ uv pip install git+https://github.com/huggingface/transformers.git
 vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080
 
 # 打开MTP，获得更好的推理性能
-vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080 --speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'
+vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080 --speculative-config '{"method": "mtp", "num_speculative_tokens": 1}' --served-model-name glm-ocr
 ```
 
 ##### 使用 SGLang
@@ -121,7 +121,7 @@ uv pip install git+https://github.com/huggingface/transformers.git
 python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080
 
 # 打开MTP，获得更好的推理性能
-python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 1
+python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 1 --served-model-name glm-ocr
 ```
 
 ##### 更新配置

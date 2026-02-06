@@ -1,0 +1,200 @@
+[
+  [
+    {
+      "index": 0,
+      "label": "text",
+      "bbox_2d": [
+        94,
+        106,
+        901,
+        142
+      ],
+      "polygon": [
+        [
+          94,
+          106
+        ],
+        [
+          94,
+          141
+        ],
+        [
+          900,
+          141
+        ],
+        [
+          900,
+          106
+        ]
+      ],
+      "content": "relationship between the beans. The only difference from previous exercises is the change in the JNDI name element tag for the Address home interface:",
+      "native_label": "text"
+    },
+    {
+      "index": 1,
+      "label": "text",
+      "bbox_2d": [
+        94,
+        147,
+        746,
+        165
+      ],
+      "polygon": [
+        [
+          94,
+          147
+        ],
+        [
+          94,
+          163
+        ],
+        [
+          744,
+          163
+        ],
+        [
+          744,
+          147
+        ]
+      ],
+      "content": "```html\n\n<local-jndi-name>AddressHomeLocal</local-jndi-name>\n\n```",
+      "native_label": "algorithm"
+    },
+    {
+      "index": 2,
+      "label": "text",
+      "bbox_2d": [
+        94,
+        177,
+        901,
+        214
+      ],
+      "polygon": [
+        [
+          94,
+          177
+        ],
+        [
+          94,
+          213
+        ],
+        [
+          900,
+          213
+        ],
+        [
+          900,
+          183
+        ],
+        [
+          881,
+          177
+        ],
+        [
+          850,
+          177
+        ]
+      ],
+      "content": "Because the Home interface for the Address is local, the tag is <local-jndi-name> rather than <indi-name>.",
+      "native_label": "text"
+    },
+    {
+      "index": 3,
+      "label": "text",
+      "bbox_2d": [
+        92,
+        222,
+        903,
+        276
+      ],
+      "polygon": [
+        [
+          92,
+          222
+        ],
+        [
+          92,
+          274
+        ],
+        [
+          901,
+          274
+        ],
+        [
+          901,
+          228
+        ],
+        [
+          872,
+          222
+        ]
+      ],
+      "content": "The `weblogic=emp-rdbms-jar.xml` descriptor file contains a number of new sections and elements in this exercise. A detailed examination of the relationship elements will wait until the next section.",
+      "native_label": "text"
+    },
+    {
+      "index": 4,
+      "label": "text",
+      "bbox_2d": [
+        92,
+        283,
+        903,
+        339
+      ],
+      "polygon": [
+        [
+          92,
+          283
+        ],
+        [
+          92,
+          337
+        ],
+        [
+          901,
+          337
+        ],
+        [
+          901,
+          283
+        ]
+      ],
+      "content": "The file contains a section mapping the Address <*camp-field*> attributes from the *ebi-jar.xml* file to the database columns in the AUTHORID column to a new section related to the AuthorID key values in these key values in this section.",
+      "native_label": "text"
+    },
+    {
+      "index": 5,
+      "label": "text",
+      "bbox_2d": [
+        111,
+        345,
+        872,
+        888
+      ],
+      "polygon": [
+        [
+          127,
+          345
+        ],
+        [
+          116,
+          887
+        ],
+        [
+          870,
+          887
+        ],
+        [
+          861,
+          366
+        ],
+        [
+          701,
+          345
+        ]
+      ],
+      "content": "```xml\n\n<weblogic-rdms-bean>\n\n  <ejb-name>AddressEJB</ejb-name>\n\n  <data-source-name>ltuan-dataSource</data-source-name>\n\n  <table-name>ADDRESS</table-name>\n\n  <field-map>\n\n    <cmp-field>id</cmp-field>\n\n    <dbms-column>ID</dbms-column>\n\n  </field-map>\n\n  <field-map>\n\n    <cmp-field>street</cmp-field>\n\n    <dbms-column>STREET</dbms-column>\n\n  </field-map>\n\n  <field-map>\n\n    <cmp-field>city</cmp-field>\n\n    <dbms-column>CITY</dbms-column>\n\n  </field-map>\n\n  <field-map>\n\n    <cmp-field>state</cmp-field>\n\n    <dbms-column>STATE</dbms-column>\n\n  </field-map>\n\n  <field-map>\n\n    <cmp-field>zip</cmp-field>\n\n    <dbms-column>ZIP</dbms-column>\n\n  </field-map>\n\n  <!-- Automatically generate the value of ID in the database on\n\ninserts using sequence table -->\n\n  <automatic-key-generation>\n\n    <generator-type>NAMED_SEQUENCE_TABLE</generator-type>\n\n    <generator-name>ADDRESS_SEQUENCE</generator-name>\n\n    <key-cache-size>/Key-cache-size>\n\n  </automatic-key-generation>\n\n</weblogic-rdms-bean>\n\n```",
+      "native_label": "algorithm"
+    }
+  ]
+]

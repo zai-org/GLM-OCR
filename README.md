@@ -99,7 +99,7 @@ Launch the service:
 uv pip install git+https://github.com/huggingface/transformers.git
 
 # Run with MTP for better performance
-vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080 --speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'
+vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080 --speculative-config '{"method": "mtp", "num_speculative_tokens": 1}' --served-model-name glm-ocr
 ```
 
 ##### Using SGLang
@@ -119,7 +119,7 @@ Launch the service:
 uv pip install git+https://github.com/huggingface/transformers.git
 
 # Run with MTP for better performance
-python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4
+python -m sglang.launch_server --model zai-org/GLM-OCR --port 8080 --speculative-algorithm NEXTN --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4 --served-model-name glm-ocr
 # Modify the speculative config base on your device
 ```
 
