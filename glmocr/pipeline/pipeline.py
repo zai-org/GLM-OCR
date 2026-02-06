@@ -305,14 +305,17 @@ class Pipeline:
 
         def data_loading_thread() -> None:
             try:
-                pages, unit_indices = self.page_loader.load_pages_with_unit_indices(
+                img_idx = 0
+                unit_indices_list: List[int] = []
+                for page, unit_idx in self.page_loader.iter_pages_with_unit_indices(
                     image_urls
-                )
-                state.num_images_loaded[0] = len(pages)
-                state.unit_indices_holder[0] = unit_indices
-                for img_idx, page in enumerate(pages):
+                ):
                     state.images_dict[img_idx] = page
                     state.page_queue.put(("image", img_idx, page))
+                    unit_indices_list.append(unit_idx)
+                    img_idx += 1
+                state.num_images_loaded[0] = img_idx
+                state.unit_indices_holder[0] = unit_indices_list
                 state.page_queue.put(("done", None, None))
             except Exception as e:
                 logger.exception("Data loading thread error: %s", e)

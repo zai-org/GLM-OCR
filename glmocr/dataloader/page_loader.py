@@ -25,6 +25,7 @@ from PIL import Image
 from glmocr.utils.image_utils import (
     load_image_to_base64,
     pdf_to_images_pil,
+    pdf_to_images_pil_iter,
     PYPDFIUM2_AVAILABLE,
 )
 from glmocr.utils.logging import get_logger, get_profiler
@@ -140,6 +141,61 @@ class PageLoader:
             all_pages.extend(pages)
             unit_indices.extend([unit_idx] * len(pages))
         return all_pages, unit_indices
+
+    def iter_pages_with_unit_indices(
+        self, sources: Union[str, List[str]]
+    ):
+        """Stream pages one at a time with unit index per page.
+
+        Yields (page, unit_idx) so the pipeline can enqueue each page as soon
+        as it is rendered (e.g. PDF: render one page → yield → next page).
+
+        Args:
+            sources: Single path/URL or a list.
+
+        Yields:
+            (PIL.Image, unit_idx) for each page.
+        """
+        if isinstance(sources, str):
+            sources = [sources]
+        for unit_idx, source in enumerate(sources):
+            for page in self._iter_source(source):
+                yield page, unit_idx
+
+    def _iter_source(self, source: str):
+        """Yield pages from a single source one at a time."""
+        if source.startswith("file://"):
+            file_path = source[7:]
+        else:
+            file_path = source
+
+        if os.path.isfile(file_path) and file_path.lower().endswith(".pdf"):
+            yield from self._iter_pdf(file_path)
+        else:
+            yield self._load_image(source)
+
+    def _iter_pdf(self, file_path: str):
+        """Yield PDF pages one at a time (streaming)."""
+        if not PYPDFIUM2_AVAILABLE:
+            raise RuntimeError(
+                "PDF support requires pypdfium2. Install: pip install pypdfium2"
+            )
+        end_page = None
+        if self.pdf_max_pages is not None:
+            try:
+                mp = int(self.pdf_max_pages)
+                if mp > 0:
+                    end_page = mp - 1  # 0-based inclusive
+            except Exception:
+                pass
+        for image in pdf_to_images_pil_iter(
+            file_path,
+            dpi=self.pdf_dpi,
+            max_width_or_height=3500,
+            start_page_id=0,
+            end_page_id=end_page,
+        ):
+            yield image
 
     def _load_source(self, source: str) -> List[Image.Image]:
         """Load a single source and return a list of pages.
