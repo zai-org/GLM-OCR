@@ -43,9 +43,6 @@ git clone https://github.com/zai-org/glm-ocr.git
 cd glm-ocr
 uv venv --python 3.12 --seed && source .venv/bin/activate
 uv pip install -e .
-
-# 从源码安装 transformers
-uv pip install git+https://github.com/huggingface/transformers.git
 ```
 
 ### 模型服务部署

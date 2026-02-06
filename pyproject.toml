@@ -37,7 +37,7 @@ dependencies = [
   # Layout detection
   "torch>=2.0.0",
   "torchvision>=0.15.0",
-  "transformers>=4.30.0",
+  "transformers>=5.1.0",
   "sentencepiece>=0.1.99",
   "accelerate>=0.20.0",
   "opencv-python>=4.8.0",
@@ -53,7 +53,7 @@ dependencies = [
 layout = [
   "torch>=2.0.0",
   "torchvision>=0.15.0",
-  "transformers>=4.30.0",
+  "transformers>=5.1.0",
   "sentencepiece>=0.1.99",
   "accelerate>=0.20.0",
   "opencv-python>=4.8.0",
