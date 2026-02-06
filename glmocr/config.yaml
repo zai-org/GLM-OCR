@@ -65,8 +65,8 @@ pipeline:
 
     # Model name included in API requests.
     # Required for mlx_vlm.server (e.g. "mlx-community/GLM-OCR-bf16").
-    # Set to null when using vLLM/SGLang (model is selected at server startup).
-    model: null
+    # Set to `glm-ocr` the `--served-model-name` when using vLLM/SGLang
+    model: glm-ocr
 
     # URL construction: {api_scheme}://{api_host}:{api_port}{api_path}
     # Or set api_url directly to override
