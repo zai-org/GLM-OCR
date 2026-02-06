@@ -7,10 +7,25 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
 import yaml
+from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field
 
 # Environment variable prefix for all GLM-OCR settings.
 ENV_PREFIX = "GLMOCR_"
+
+
+def _find_dotenv(start: Optional[Path] = None) -> Optional[Path]:
+    """Walk up from *start* (default: cwd) looking for a ``.env`` file.
+
+    Returns the first ``.env`` found, or ``None``.
+    """
+    cur = (start or Path.cwd()).resolve()
+    for directory in (cur, *cur.parents):
+        candidate = directory / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
 
 # Mapping: env-var name (without prefix) → nested config dict path.
 # Only the most commonly needed knobs are listed here so that an agent can
@@ -214,12 +229,33 @@ def _coerce_env_value(dotted_path: str, raw: str) -> Any:
 
 
 def _collect_env_overrides() -> Dict[str, Any]:
-    """Read GLMOCR_* environment variables and return a nested config dict."""
-    overrides: Dict[str, Any] = {}
-    for env_suffix, dotted_path in _ENV_MAP.items():
-        val = os.environ.get(f"{ENV_PREFIX}{env_suffix}")
+    """Read GLMOCR_* values from ``.env`` file + real environment variables.
+
+    Priority: real ``os.environ`` > ``.env`` file.  This means a user can
+    always override a ``.env`` value by exporting the variable in the shell.
+    """
+    # 1. Load .env file (does NOT mutate os.environ)
+    dotenv_path = _find_dotenv()
+    dotenv_vars: Dict[str, Optional[str]] = (
+        dotenv_values(dotenv_path) if dotenv_path else {}
+    )
+
+    # 2. Merge: real env > .env
+    merged: Dict[str, str] = {}
+    for env_suffix in _ENV_MAP:
+        full_key = f"{ENV_PREFIX}{env_suffix}"
+        # Real env takes precedence
+        val = os.environ.get(full_key)
+        if val is None:
+            val = dotenv_vars.get(full_key)  # type: ignore[assignment]
         if val is not None:
-            _set_nested(overrides, dotted_path, _coerce_env_value(dotted_path, val))
+            merged[env_suffix] = val
+
+    # 3. Build nested config dict
+    overrides: Dict[str, Any] = {}
+    for env_suffix, raw in merged.items():
+        dotted_path = _ENV_MAP[env_suffix]
+        _set_nested(overrides, dotted_path, _coerce_env_value(dotted_path, raw))
     return overrides
 
 
