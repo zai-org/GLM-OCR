@@ -6,19 +6,19 @@ relationship between the beans. The only difference from previous exercises is t
 
 ```
 
-Because the Home interface for the Address is local, the tag is <local-jndi-name> rather than <indi-name>.
+Because the Home interface for the Address is local, the tag is `<local-jndi-name>` rather than `<jndi-name>`.
 
-The `weblogic=emp-rdbms-jar.xml` descriptor file contains a number of new sections and elements in this exercise. A detailed examination of the relationship elements will wait until the next section.
+The `weblogic-cmp-rdbms-jar.xml` descriptor file contains a number of new sections and elements in this exercise. A detailed examination of the relationship elements will wait until the next section.
 
-The file contains a section mapping the Address <*camp-field*> attributes from the *ebi-jar.xml* file to the database columns in the AUTHORID column to a new section related to the AuthorID key values in these key values in this section.
+The file contains a section mapping the Address <comp_fi1-1d> attributes from the `qb-jar.xml` file to the database columns in the `comp_fi1-1d` to a new section related to the primary key values in this
 
-```xml
+```html
 
-<weblogic-rdms-bean>
+<weblogic-rdbms-bean>
 
-  <ejb-name>AddressEJB</ejb-name>
+  <ejb-name>AddressJEJ</ejb-name>
 
-  <data-source-name>ltuan-dataSource</data-source-name>
+  <data-source-name>titan-dataSource</data-source-name>
 
   <table-name>ADDRESS</table-name>
 
@@ -68,14 +68,14 @@ inserts using sequence table -->
 
   <automatic-key-generation>
 
-    <generator-type>NAMED_SEQUENCE_TABLE</generator-type>
+    <generator-type>NAMED SEQUENCE TABLE</generator-type>
 
-    <generator-name>ADDRESS_SEQUENCE</generator-name>
+    <generator-name>ADDRESS SEQUENCE</generator-name>
 
-    <key-cache-size>/Key-cache-size>
+    <key-cache-size>10</key-cache-size>
 
   </automatic-key-generation>
 
-</weblogic-rdms-bean>
+</weblogic-rdbms-bean>
 
 ```

@@ -9,6 +9,7 @@ Two modes are supported:
    Requires GPU; SDK handles layout detection, parallel OCR, etc.
 """
 
+import re
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 
@@ -150,6 +151,70 @@ class GlmOcr:
 
         return results
 
+    # ------------------------------------------------------------------
+    # MaaS bbox coordinate conversion
+    # ------------------------------------------------------------------
+    # The MaaS API returns bbox_2d in **absolute pixel coordinates** of
+    # its own internal rendering (e.g. 2040×2640 for a letter-sized PDF
+    # page).  The rest of the SDK (self-hosted pipeline, crop_image_region,
+    # crop_and_replace_images) uses **normalised 0-1000 coordinates**.
+    #
+    # To keep everything consistent we convert here, right after receiving
+    # the MaaS response, so that json_result and markdown_result always
+    # contain normalised coords regardless of the backend.
+
+    @staticmethod
+    def _normalise_bbox(
+        bbox: Optional[List[int]],
+        page_w: int,
+        page_h: int,
+    ) -> Optional[List[int]]:
+        """Convert absolute-pixel bbox to normalised 0-1000 coords."""
+        if not bbox or len(bbox) != 4 or page_w <= 0 or page_h <= 0:
+            return bbox
+        x1, y1, x2, y2 = bbox
+        return [
+            round(x1 * 1000 / page_w),
+            round(y1 * 1000 / page_h),
+            round(x2 * 1000 / page_w),
+            round(y2 * 1000 / page_h),
+        ]
+
+    # Regex for Markdown image refs: ![](page=0,bbox=[431, 1762, 1061, 2189])
+    _MD_BBOX_RE = re.compile(r"(!\[\]\(page=(\d+),bbox=\[([\d,\s]+)\])\)")
+
+    @classmethod
+    def _normalise_markdown_bboxes(
+        cls,
+        markdown: str,
+        pages_info: List[Dict[str, int]],
+    ) -> str:
+        """Replace absolute-pixel bbox values in Markdown image refs with
+        normalised 0-1000 values so that ``crop_and_replace_images`` crops
+        from the correct region.
+        """
+        if not pages_info or not markdown:
+            return markdown
+
+        def _replace(m: re.Match) -> str:
+            page_idx = int(m.group(2))
+            if page_idx >= len(pages_info):
+                return m.group(0)  # can't normalise, keep original
+
+            page_w = pages_info[page_idx].get("width", 0)
+            page_h = pages_info[page_idx].get("height", 0)
+            if page_w <= 0 or page_h <= 0:
+                return m.group(0)
+
+            raw_coords = [int(c.strip()) for c in m.group(3).split(",")]
+            if len(raw_coords) != 4:
+                return m.group(0)
+
+            norm = cls._normalise_bbox(raw_coords, page_w, page_h)
+            return f"![](page={page_idx},bbox={norm})"
+
+        return cls._MD_BBOX_RE.sub(_replace, markdown)
+
     def _maas_response_to_pipeline_result(
         self, response: Dict[str, Any], source: str
     ) -> PipelineResult:
@@ -157,23 +222,41 @@ class GlmOcr:
         # Extract layout_details (list of pages, each page is a list of regions)
         layout_details = response.get("layout_details", [])
 
+        # Per-page pixel dimensions from MaaS (used for bbox normalisation).
+        data_info = response.get("data_info", {})
+        pages_info: List[Dict[str, int]] = data_info.get("pages", [])
+
         # Convert to SDK format: [[{index, label, content, bbox_2d}, ...], ...]
         json_result = []
-        for page_regions in layout_details:
+        for page_idx, page_regions in enumerate(layout_details):
+            # Resolve page dimensions for normalisation.
+            if page_idx < len(pages_info):
+                page_w = pages_info[page_idx].get("width", 0)
+                page_h = pages_info[page_idx].get("height", 0)
+            else:
+                page_w = page_h = 0
+
             page_result = []
             for region in page_regions:
+                bbox = region.get("bbox_2d")
+                if page_w > 0 and page_h > 0 and bbox:
+                    bbox = self._normalise_bbox(bbox, page_w, page_h)
                 page_result.append(
                     {
                         "index": region.get("index", 0),
                         "label": region.get("label", "text"),
                         "content": region.get("content", ""),
-                        "bbox_2d": region.get("bbox_2d"),
+                        "bbox_2d": bbox,
                     }
                 )
             json_result.append(page_result)
 
-        # Get markdown result
+        # Get markdown result and normalise the bbox refs inside it.
         markdown_result = response.get("md_results", "")
+        markdown_result = self._normalise_markdown_bboxes(
+            markdown_result,
+            pages_info,
+        )
 
         # Create PipelineResult
         result = PipelineResult(
