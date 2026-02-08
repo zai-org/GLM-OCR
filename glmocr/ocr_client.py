@@ -54,7 +54,6 @@ class OCRClient:
 
         self.api_key = config.api_key or os.getenv("GLMOCR_API_KEY")
         self.extra_headers = config.headers or {}
-        self.model = config.model  # Optional model name
 
         # API mode: "openai" or "ollama_generate"
         self.api_mode = getattr(config, "api_mode", "openai")
