@@ -133,9 +133,12 @@ pipeline:
     api_port: 8080
 ```
 
-#### Option 3: Apple Silicon with mlx-vlm
+#### Option 3: Ollama/MLX
 
-See the **[MLX Detailed Deployment Guide](examples/mlx-deploy/README.md)** for full setup instructions, including environment isolation and troubleshooting.
+For specialized deployment scenarios, see the detailed guides:
+
+- **[Apple Silicon with mlx-vlm](examples/mlx-deploy/README.md)** - Optimized for Apple Silicon Macs
+- **[Ollama Deployment](examples/ollama-deploy/README.md)** - Simple local deployment with Ollama
 
 ### SDK Usage Guide
 
