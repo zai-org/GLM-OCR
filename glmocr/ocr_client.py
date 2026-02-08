@@ -405,8 +405,22 @@ class OCRClient:
                 ...
             }
         }
+
+        Note:
+            This method only processes messages with role='user'. System messages
+            and conversation history (assistant messages) are not supported by
+            Ollama's /api/generate endpoint and will be ignored.
         """
         messages = request_data.get("messages", [])
+
+        # Check for non-user messages and log a warning
+        non_user_messages = [msg for msg in messages if msg.get("role") != "user"]
+        if non_user_messages:
+            roles = [msg.get("role") for msg in non_user_messages]
+            logger.warning(
+                f"Ollama generate mode: ignoring {len(non_user_messages)} non-user message(s) "
+                f"with roles {roles}. Only the last user message will be processed."
+            )
 
         # Extract prompt and images from the last user message
         prompt = ""
