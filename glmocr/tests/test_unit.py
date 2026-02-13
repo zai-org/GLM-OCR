@@ -1,6 +1,8 @@
 """Unit tests for glmocr (no external services required)."""
 
+import importlib
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +25,50 @@ class TestConfig:
 
         cfg = load_config().to_dict()
         assert isinstance(cfg, dict)
+
+
+class TestServer:
+    """Tests for Flask server behavior."""
+
+    def test_server_accepts_json_content_type_with_charset(self):
+        """Accepts standard JSON Content-Type parameters."""
+        import sys
+        from types import SimpleNamespace
+
+        from glmocr.server import create_app
+
+        fake_result = MagicMock()
+        fake_result.json_result = {"ok": True}
+        fake_result.markdown_result = "ok"
+
+        fake_pipeline = MagicMock()
+        fake_pipeline.process.return_value = iter([fake_result])
+        fake_pipeline_module = SimpleNamespace(Pipeline=lambda config: fake_pipeline)
+
+        with patch.dict(sys.modules, {"glmocr.pipeline": fake_pipeline_module}):
+            app = create_app(SimpleNamespace(pipeline={}))
+            client = app.test_client()
+            response = client.post(
+                "/glmocr/parse",
+                data=json.dumps({"images": ["https://example.com/image.png"]}),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+            )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["json_result"] == {"ok": True}
+
+    def test_server_module_does_not_override_proxy_env(self, monkeypatch):
+        """Importing server module should not mutate proxy env vars."""
+        import glmocr.server as server_module
+
+        monkeypatch.setenv("http_proxy", "http://proxy.local:8080")
+        monkeypatch.setenv("https_proxy", "https://proxy.local:8443")
+
+        importlib.reload(server_module)
+
+        assert os.environ["http_proxy"] == "http://proxy.local:8080"
+        assert os.environ["https_proxy"] == "https://proxy.local:8443"
 
 
 class TestPageLoader:

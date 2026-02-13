@@ -1,6 +1,5 @@
 """GLM-OCR SDK Flask service."""
 
-import os
 import sys
 import traceback
 import multiprocessing
@@ -8,17 +7,12 @@ from typing import TYPE_CHECKING
 
 from flask import Flask, request, jsonify
 
-from glmocr.pipeline import Pipeline
-from glmocr.config import load_config
 from glmocr.utils.logging import get_logger, configure_logging
 
 if TYPE_CHECKING:
     from glmocr.config import GlmOcrConfig
 
 logger = get_logger(__name__)
-
-os.environ["http_proxy"] = ""
-os.environ["https_proxy"] = ""
 
 
 def create_app(config: "GlmOcrConfig") -> Flask:
@@ -30,6 +24,8 @@ def create_app(config: "GlmOcrConfig") -> Flask:
     Returns:
         Flask app instance.
     """
+    from glmocr.pipeline import Pipeline
+
     app = Flask(__name__)
 
     # Create pipeline with typed config
@@ -55,7 +51,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             }
         """
         # Validate Content-Type
-        if request.headers.get("Content-Type") != "application/json":
+        if not request.is_json:
             return (
                 jsonify(
                     {"error": "Invalid Content-Type. Expected 'application/json'."}
@@ -65,8 +61,11 @@ def create_app(config: "GlmOcrConfig") -> Flask:
 
         # Parse JSON payload
         try:
-            data = request.json
+            data = request.get_json(silent=False)
         except Exception:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        if not isinstance(data, dict):
             return jsonify({"error": "Invalid JSON payload"}), 400
 
         images = data.get("images", [])
@@ -159,6 +158,8 @@ def main():
     app = None
 
     try:
+        from glmocr.config import load_config
+
         config = load_config(args.config)
 
         # Configure logging
