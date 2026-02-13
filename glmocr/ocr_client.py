@@ -208,7 +208,7 @@ class OCRClient:
                                 self.api_url,
                                 headers=headers,
                                 data=json.dumps(test_payload),
-                                timeout=30,
+                                timeout=(self.connect_timeout, self.request_timeout),
                                 verify=self.verify_ssl,
                             )
                             if response.status_code == 200:
@@ -281,7 +281,7 @@ class OCRClient:
                         self.api_url,
                         headers=headers,
                         data=json.dumps(request_data),
-                        timeout=self.request_timeout,
+                        timeout=(self.connect_timeout, self.request_timeout),
                         verify=self.verify_ssl,
                     )
 
