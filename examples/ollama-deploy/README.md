@@ -34,15 +34,6 @@ ollama pull glm-ocr:latest
 
 This will download the GLM-OCR model.
 
-### 4. Start Ollama Service
-
-The Ollama service should start automatically after installation. If not:
-
-```bash
-ollama serve
-```
-
-The service will run on `http://localhost:11434` by default.
 
 ## Configuration
 
