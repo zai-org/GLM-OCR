@@ -199,6 +199,7 @@ class LayoutConfig(_BaseConfig):
     label_task_mapping: Optional[Dict[str, Any]] = None
     id2label: Optional[Dict[int, str]] = None
     use_polygon: bool = False
+    id2label: Optional[Dict[Union[int, str], str]] = None
 
     @field_validator("device")
     @classmethod
