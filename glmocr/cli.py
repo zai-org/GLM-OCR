@@ -42,7 +42,7 @@ def load_image_paths(input_path: str) -> List[str]:
         for ext in ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif", "*.webp", "*.pdf"]:
             image_paths.extend([str(p.absolute()) for p in path.glob(ext)])
             image_paths.extend([str(p.absolute()) for p in path.glob(ext.upper())])
-        image_paths.sort()
+        image_paths = sorted(set(image_paths))  # deduplicate
         if not image_paths:
             raise ValueError(
                 f"Cannot find image or PDF files in directory: {input_path}"
