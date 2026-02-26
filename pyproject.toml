@@ -10,7 +10,7 @@ authors = [
   {name = "ZHIPUAI", email = "info@zhipuai.cn"}
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 keywords = ["ocr", "glm", "ai", "vision"]
 classifiers = [
@@ -18,10 +18,10 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
@@ -34,19 +34,8 @@ dependencies = [
   "portalocker>=2.8.2",
   "python-dotenv>=0.21.0",
 
-  # Layout detection
-  "torch>=2.0.0",
-  "torchvision>=0.15.0",
-  "transformers>=5.1.0",
-  "sentencepiece>=0.1.99",
-  "accelerate>=0.20.0",
-  "opencv-python>=4.8.0",
-
   # PDF support
   "pypdfium2>=5.3.0",
-
-  # Flask server
-  "flask>=2.3.0",
 ]
 
 [project.optional-dependencies]
@@ -68,14 +57,7 @@ server = [
 ]
 
 all = [
-  "torch>=2.0.0",
-  "torchvision>=0.15.0",
-  "transformers>=4.30.0",
-  "sentencepiece>=0.1.99",
-  "accelerate>=0.20.0",
-  "opencv-python>=4.8.0",
-  "pdf2image>=1.16.0",
-  "flask>=2.3.0",
+  "glmocr[layout,server]",
 ]
 dev = [
   "pytest>=7.0.0",
@@ -100,7 +82,7 @@ include = ["glmocr*"]
 
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310", "py311"]
+target-version = ["py310", "py311", "py312", "py313"]
 
 [tool.pytest.ini_options]
 testpaths = ["glmocr/tests"]

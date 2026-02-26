@@ -247,7 +247,16 @@ class Pipeline:
                 user_msg["content"].append(
                     {"type": "image_url", "image_url": {"url": data_url}}
                 )
-                per_request = self.page_loader.build_request(per_request)
+                # Set default parameters without calling build_request(),
+                # which would re-process the already-encoded image through
+                # load_image_to_base64 a second time.
+                per_request.setdefault("max_tokens", self.page_loader.max_tokens)
+                per_request.setdefault("temperature", self.page_loader.temperature)
+                per_request.setdefault("top_p", self.page_loader.top_p)
+                per_request.setdefault("top_k", self.page_loader.top_k)
+                per_request.setdefault(
+                    "repetition_penalty", self.page_loader.repetition_penalty
+                )
                 response, status_code = self.ocr_client.process(per_request)
                 if status_code != 200:
                     raise Exception(

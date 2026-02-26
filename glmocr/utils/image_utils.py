@@ -1,7 +1,6 @@
 """Image processing utilities."""
 
 import io
-import cv2
 import base64
 import math
 from io import BytesIO
@@ -191,6 +190,7 @@ def crop_image_region(image, bbox_2d, polygon=None, fill_color=255):
     Returns:
         PIL.Image.Image: Cropped region with optional polygon mask applied
     """
+    import cv2
     image_width, image_height = image.size
 
     # De-normalize bbox to pixel coordinates
