@@ -152,6 +152,64 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             filtered.append(new_result)
         return filtered
 
+    def _empty_detection_result(self) -> Dict:
+        """Return an empty detection result dict (no boxes)."""
+        return {
+            "scores": torch.tensor([], device=self._device),
+            "labels": torch.tensor([], dtype=torch.long, device=self._device),
+            "boxes": torch.tensor([], device=self._device).reshape(0, 4),
+            "order_seq": torch.tensor([], dtype=torch.long, device=self._device),
+        }
+
+    def _run_detection_single_image(
+        self, image: Image.Image, pre_threshold: float
+    ) -> Dict:
+        """Run model + post_process for a single image. Raises on error."""
+        single_inputs = self._image_processor(images=[image], return_tensors="pt")
+        single_inputs = {k: v.to(self._device) for k, v in single_inputs.items()}
+        with torch.no_grad():
+            single_outputs = self._model(**single_inputs)
+        single_target = torch.tensor([image.size[::-1]], device=self._device)
+        single_raw = self._image_processor.post_process_object_detection(
+            single_outputs,
+            threshold=pre_threshold,
+            target_sizes=single_target,
+        )
+        return single_raw[0]
+
+    def _post_process_chunk_with_fallback(
+        self,
+        chunk_pil: List[Image.Image],
+        outputs,
+        target_sizes,
+        pre_threshold: float,
+        chunk_start: int,
+    ) -> List[Dict]:
+        """Run batch post_process; on failure, retry image-by-image."""
+        try:
+            return self._image_processor.post_process_object_detection(
+                outputs,
+                threshold=pre_threshold,
+                target_sizes=target_sizes,
+            )
+        except Exception as e:
+            logger.warning(
+                "Layout post_process failed for chunk (retrying image-by-image): %s",
+                e,
+            )
+        raw_results = []
+        for i, img in enumerate(chunk_pil):
+            try:
+                raw_results.append(self._run_detection_single_image(img, pre_threshold))
+            except Exception as e2:
+                logger.warning(
+                    "Layout post_process failed for image %s in chunk: %s",
+                    chunk_start + i,
+                    e2,
+                )
+                raw_results.append(self._empty_detection_result())
+        return raw_results
+
     def process(
         self,
         images: List[Image.Image],
@@ -227,58 +285,9 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             else:
                 pre_threshold = self.threshold
 
-            try:
-                raw_results = self._image_processor.post_process_object_detection(
-                    outputs,
-                    threshold=pre_threshold,
-                    target_sizes=target_sizes,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Layout post_process failed for chunk (retrying image-by-image): %s",
-                    e,
-                )
-                raw_results = []
-                for i in range(len(chunk_pil)):
-                    try:
-                        single_inputs = self._image_processor(
-                            images=[chunk_pil[i]], return_tensors="pt"
-                        )
-                        single_inputs = {
-                            k: v.to(self._device) for k, v in single_inputs.items()
-                        }
-                        with torch.no_grad():
-                            single_outputs = self._model(**single_inputs)
-                        single_target = torch.tensor(
-                            [chunk_pil[i].size[::-1]], device=self._device
-                        )
-                        single_raw = (
-                            self._image_processor.post_process_object_detection(
-                                single_outputs,
-                                threshold=pre_threshold,
-                                target_sizes=single_target,
-                            )
-                        )
-                        raw_results.append(single_raw[0])
-                    except Exception as e2:
-                        logger.warning(
-                            "Layout post_process failed for image %s in chunk: %s",
-                            chunk_start + i,
-                            e2,
-                        )
-                        empty = {
-                            "scores": torch.tensor([], device=self._device),
-                            "labels": torch.tensor(
-                                [], dtype=torch.long, device=self._device
-                            ),
-                            "boxes": torch.tensor([], device=self._device).reshape(
-                                0, 4
-                            ),
-                            "order_seq": torch.tensor(
-                                [], dtype=torch.long, device=self._device
-                            ),
-                        }
-                        raw_results.append(empty)
+            raw_results = self._post_process_chunk_with_fallback(
+                chunk_pil, outputs, target_sizes, pre_threshold, chunk_start
+            )
 
             if self.threshold_by_class:
                 raw_results = self._apply_per_class_threshold(raw_results)

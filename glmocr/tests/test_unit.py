@@ -988,6 +988,121 @@ class TestParseReturnType:
         assert len(result) == 2
 
 
+class TestGlmOcrParseStream:
+    """Unit tests for GlmOcr._parse_stream() (stream=True path)."""
+
+    def _make_glmocr_maas(self):
+        """GlmOcr with MaaS enabled and mocked _maas_client."""
+        from glmocr.api import GlmOcr
+        from glmocr.parser_result import PipelineResult
+
+        obj = object.__new__(GlmOcr)
+        obj._use_maas = True
+        obj._pipeline = None
+        obj._maas_client = MagicMock()
+        obj.config_model = MagicMock()
+        obj.enable_layout = True
+        obj._maas_response_to_pipeline_result = MagicMock(
+            return_value=PipelineResult(
+                json_result=[[{"content": "ok"}]],
+                markdown_result="ok",
+                original_images=["img.png"],
+            )
+        )
+        return obj
+
+    def _make_glmocr_selfhosted(self):
+        """GlmOcr with self-hosted mode and mocked _stream_parse_selfhosted."""
+        from glmocr.api import GlmOcr
+        from glmocr.parser_result import PipelineResult
+
+        obj = object.__new__(GlmOcr)
+        obj._use_maas = False
+        obj._maas_client = None
+        obj._pipeline = MagicMock()
+        obj.config_model = MagicMock()
+        obj.enable_layout = True
+        r1 = PipelineResult(
+            json_result=[], markdown_result="a", original_images=["a.png"]
+        )
+        r2 = PipelineResult(
+            json_result=[], markdown_result="b", original_images=["b.png"]
+        )
+        obj._stream_parse_selfhosted = MagicMock(return_value=(r for r in [r1, r2]))
+        return obj
+
+    def test_parse_stream_maas_yields_one_per_image(self):
+        """MaaS: one PipelineResult yielded per image."""
+        from glmocr.parser_result import PipelineResult
+
+        parser = self._make_glmocr_maas()
+        parser._maas_client.parse.return_value = {
+            "md_results": "",
+            "layout_details": [],
+            "data_info": {"pages": []},
+        }
+        results = list(parser._parse_stream(["img1.png", "img2.png"]))
+        assert len(results) == 2
+        assert all(isinstance(r, PipelineResult) for r in results)
+        assert parser._maas_client.parse.call_count == 2
+
+    def test_parse_stream_maas_strips_file_prefix(self):
+        """MaaS: file:// prefix is stripped when calling API."""
+        parser = self._make_glmocr_maas()
+        parser._maas_client.parse.return_value = {
+            "md_results": "",
+            "layout_details": [],
+            "data_info": {"pages": []},
+        }
+        list(parser._parse_stream(["file:///path/to/img.png"]))
+        parser._maas_client.parse.assert_called_once()
+        call_arg = parser._maas_client.parse.call_args[0][0]
+        assert call_arg == "/path/to/img.png"
+
+    def test_parse_stream_maas_on_error_yields_error_result(self):
+        """MaaS: on API exception, yield result with _error set."""
+        from glmocr.parser_result import PipelineResult
+
+        parser = self._make_glmocr_maas()
+        parser._maas_client.parse.side_effect = RuntimeError("API down")
+        results = list(parser._parse_stream(["img.png"]))
+        assert len(results) == 1
+        assert isinstance(results[0], PipelineResult)
+        assert results[0]._error == "API down"
+        assert len(results[0].original_images) == 1
+        assert results[0].original_images[0].endswith("img.png")
+        assert results[0].markdown_result == ""
+
+    def test_parse_stream_maas_save_layout_sets_kwarg(self):
+        """MaaS: save_layout_visualization=True sets need_layout_visualization in kwargs."""
+        parser = self._make_glmocr_maas()
+        parser._maas_client.parse.return_value = {
+            "md_results": "",
+            "layout_details": [],
+            "data_info": {"pages": []},
+        }
+        list(parser._parse_stream(["img.png"], save_layout_visualization=True))
+        call_kwargs = parser._maas_client.parse.call_args[1]
+        assert call_kwargs.get("need_layout_visualization") is True
+
+    def test_parse_stream_selfhosted_delegates(self):
+        """Self-hosted: yields results from _stream_parse_selfhosted."""
+        parser = self._make_glmocr_selfhosted()
+        results = list(
+            parser._parse_stream(
+                ["a.png", "b.png"],
+                save_layout_visualization=False,
+            )
+        )
+        assert len(results) == 2
+        assert results[0].markdown_result == "a"
+        assert results[1].markdown_result == "b"
+        parser._stream_parse_selfhosted.assert_called_once_with(
+            ["a.png", "b.png"],
+            save_layout_visualization=False,
+        )
+
+
 class TestGlmOcrConstructor:
     """Tests for GlmOcr.__init__ kwarg handling (config assembly only)."""
 

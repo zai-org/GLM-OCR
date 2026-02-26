@@ -573,11 +573,24 @@ def parse(
     ...
 
 
+@overload
+def parse(
+    images: Union[str, List[str]],
+    config_path: Optional[str] = ...,
+    save_layout_visualization: bool = ...,
+    *,
+    stream: Literal[True],
+    **kwargs: Any,
+) -> Generator[PipelineResult, None, None]:
+    ...
+
+
 def parse(
     images: Union[str, List[str]],
     config_path: Optional[str] = None,
     save_layout_visualization: bool = True,
     *,
+    stream: bool = False,
     api_key: Optional[str] = None,
     api_url: Optional[str] = None,
     model: Optional[str] = None,
@@ -585,7 +598,8 @@ def parse(
     timeout: Optional[int] = None,
     enable_layout: Optional[bool] = None,
     log_level: Optional[str] = None,
-) -> List[PipelineResult]:
+    **kwargs: Any,
+) -> Union[PipelineResult, List[PipelineResult], Generator[PipelineResult, None, None]]:
     """Convenience function: parse images or documents in one call.
 
     Creates a :class:`GlmOcr` instance, runs parsing, and cleans up.
@@ -604,14 +618,20 @@ def parse(
         # Self-hosted mode
         results = glmocr.parse("image.png", mode="selfhosted")
 
-    The return type mirrors the input type:
-    - ``str`` → ``PipelineResult``
-    - ``List[str]`` → ``List[PipelineResult]``
+        # Stream to avoid large in-memory results
+        for r in glmocr.parse(["a.pdf", "b.pdf"], stream=True):
+            r.save(output_dir="./output")
+
+    The return type mirrors the input type and stream:
+    - ``str``, stream=False → ``PipelineResult``
+    - ``List[str]``, stream=False → ``List[PipelineResult]``
+    - ``stream=True`` → ``Generator[PipelineResult, None, None]``
 
     Args:
         images: Image path or URL (single ``str`` or ``List[str]``).
         config_path: Config file path.
         save_layout_visualization: Whether to save layout visualization.
+        stream: If ``True``, returns a generator that yields one result at a time.
         api_key:  API key.
         api_url:  MaaS API endpoint URL.
         model:    Model name.
@@ -621,7 +641,7 @@ def parse(
         log_level: Logging level.
 
     Returns:
-        A single ``PipelineResult`` or a list, matching the input type.
+        A single ``PipelineResult``, a list, or a generator, depending on input and stream.
 
     Example:
         result = parse("image.png")
@@ -629,6 +649,9 @@ def parse(
 
         results = parse(["img1.png", "doc.pdf"])
         for r in results:
+            r.save(output_dir="./output")
+
+        for r in parse(["a.pdf", "b.pdf"], stream=True):
             r.save(output_dir="./output")
     """
     with GlmOcr(
@@ -641,4 +664,9 @@ def parse(
         enable_layout=enable_layout,
         log_level=log_level,
     ) as parser:
-        return parser.parse(images, save_layout_visualization=save_layout_visualization)
+        return parser.parse(
+            images,
+            stream=stream,
+            save_layout_visualization=save_layout_visualization,
+            **kwargs,
+        )
