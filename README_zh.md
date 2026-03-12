@@ -29,6 +29,7 @@ GLM-OCR 是一款面向复杂文档理解的多模态 OCR 模型，基于 GLM-V 
 
 ### 最新动态
 
+- **[2026.3.12]** GLM-OCR SDK 新增 Agent Skill 模式 — `pip install glmocr` + 配置 API Key，即可通过 CLI 或 Python 直接使用，无需 GPU 和 YAML 配置。详情见：[GLM-OCR Skill](glmocr_skill/SKILL.md)
 - **[2026.3.12]** GLM-OCR 技术报告已上线，详情见：[GLM-OCR 技术报告](https://arxiv.org/abs/2603.10910)
 - **[2026.2.12]** 基于 LLaMA-Factory 的微调教程上线，详情见： [GLM-OCR 微调教程](examples/finetune/README_zh.md)
 
