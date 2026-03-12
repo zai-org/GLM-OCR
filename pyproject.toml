@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "glmocr"
-version = "0.1.2dev"
+version = "0.1.2"
 description = "GLM OCR - Optical Character Recognition powered by GLM"
 authors = [
   {name = "zai-org", email = "wenmeng.yu@aminer.cn"}
