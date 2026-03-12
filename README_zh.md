@@ -50,7 +50,7 @@ GLM-OCR 是一款面向复杂文档理解的多模态 OCR 模型，基于 GLM-V 
 pip install glmocr
 ```
 
-从源码安装, 方便修改: 
+从源码安装, 方便修改:
 
 ```bash
 git clone https://github.com/zai-org/glm-ocr.git
