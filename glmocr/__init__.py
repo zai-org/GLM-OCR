@@ -18,6 +18,7 @@ __all__ = [
     "GlmOcrConfig",
     "load_config",
     "MaaSClient",
+    "MissingApiKeyError",
     "GlmOcr",
     "parse",
 ]
@@ -30,6 +31,7 @@ _LAZY_ATTRS = {
     "GlmOcrConfig": ("config", "GlmOcrConfig"),
     "load_config": ("config", "load_config"),
     "MaaSClient": ("maas_client", "MaaSClient"),
+    "MissingApiKeyError": ("maas_client", "MissingApiKeyError"),
     "GlmOcr": ("api", "GlmOcr"),
     "parse": ("api", "parse"),
 }
@@ -56,6 +58,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from . import dataloader, layout, postprocess, utils
     from .api import GlmOcr, parse
     from .config import GlmOcrConfig, load_config
-    from .maas_client import MaaSClient
+    from .maas_client import MaaSClient, MissingApiKeyError
     from .parser_result import PipelineResult
     from .pipeline import Pipeline

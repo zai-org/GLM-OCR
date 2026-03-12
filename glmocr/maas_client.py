@@ -34,6 +34,19 @@ logger = get_logger(__name__)
 profiler = get_profiler(__name__)
 
 
+class MissingApiKeyError(ValueError):
+    """Raised when MaaS mode is active but no API key is configured."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "MaaS mode requires an API key.\n"
+            "  Option 1 (env var):  export GLMOCR_API_KEY=sk-xxx\n"
+            "  Option 2 (CLI flag): glmocr parse image.png --api-key sk-xxx\n"
+            '  Option 3 (Python):   GlmOcr(api_key="sk-xxx")\n'
+            "  Get your key at:     https://open.bigmodel.cn"
+        )
+
+
 # Default MaaS API endpoint
 DEFAULT_MAAS_URL = "https://open.bigmodel.cn/api/paas/v4/layout_parsing"
 DEFAULT_MAAS_MODEL = "glm-ocr"
@@ -103,13 +116,7 @@ class MaaSClient:
         # Authentication
         self.api_key = config.api_key or os.getenv("GLMOCR_API_KEY")
         if not self.api_key:
-            raise ValueError(
-                "MaaS mode requires an API key.\n"
-                "  Option 1 (env var):  export GLMOCR_API_KEY=sk-xxx\n"
-                "  Option 2 (CLI flag): glmocr parse image.png --api-key sk-xxx\n"
-                '  Option 3 (Python):   GlmOcr(api_key="sk-xxx")\n'
-                "  Get your key at:     https://open.bigmodel.cn"
-            )
+            raise MissingApiKeyError()
 
         # SSL verification
         self.verify_ssl = config.verify_ssl

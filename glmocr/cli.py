@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List
 
 from glmocr.api import GlmOcr
+from glmocr.maas_client import MissingApiKeyError
 from glmocr.utils.logging import get_logger, configure_logging
 
 logger = get_logger(__name__)
@@ -234,19 +235,19 @@ def main():
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         sys.exit(1)
+    except MissingApiKeyError as e:
+        logger.error(
+            "%s\n\n"
+            "  Quick fix:\n"
+            "    export GLMOCR_API_KEY=sk-xxx          # set once in shell\n"
+            "    glmocr parse image.png --api-key sk-xxx  # or pass directly\n\n"
+            "  Get your free key at: https://open.bigmodel.cn",
+            e,
+        )
+        logger.debug(traceback.format_exc())
+        sys.exit(1)
     except Exception as e:
-        err_msg = str(e)
-        if "API key" in err_msg:
-            logger.error(
-                "%s\n\n"
-                "  Quick fix:\n"
-                "    export GLMOCR_API_KEY=sk-xxx          # set once in shell\n"
-                "    glmocr parse image.png --api-key sk-xxx  # or pass directly\n\n"
-                "  Get your free key at: https://open.bigmodel.cn",
-                err_msg,
-            )
-        else:
-            logger.error("Error: %s", e)
+        logger.error("Error: %s", e)
         logger.debug(traceback.format_exc())
         sys.exit(1)
 

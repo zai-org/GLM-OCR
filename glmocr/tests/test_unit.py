@@ -341,20 +341,19 @@ class TestMaaSClient:
         from glmocr.config import MaaSApiConfig
 
         config = MaaSApiConfig()
-        assert config.enabled is False
+        assert config.enabled is True
         assert config.api_url == "https://open.bigmodel.cn/api/paas/v4/layout_parsing"
         assert config.model == "glm-ocr"
         assert config.verify_ssl is True
 
     def test_maas_client_requires_api_key(self):
-        """MaaSClient raises error when API key is missing."""
-        from glmocr.maas_client import MaaSClient
+        """MaaSClient raises MissingApiKeyError when API key is missing."""
+        from glmocr.maas_client import MaaSClient, MissingApiKeyError
         from glmocr.config import MaaSApiConfig
 
         config = MaaSApiConfig(api_key=None)
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(MissingApiKeyError):
             MaaSClient(config)
-        assert "API key is required" in str(exc.value)
 
     def test_maas_client_init_with_api_key(self):
         """MaaSClient initializes correctly with API key."""
@@ -506,7 +505,7 @@ class TestMaaSClient:
 
         config = PipelineConfig()
         assert hasattr(config, "maas")
-        assert config.maas.enabled is False
+        assert config.maas.enabled is True
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -707,7 +706,7 @@ class TestFromEnv:
         monkeypatch.setattr("glmocr.config._find_dotenv", lambda: None)
 
         cfg = GlmOcrConfig.from_env()
-        assert cfg.pipeline.maas.enabled is False
+        assert cfg.pipeline.maas.enabled is True
         assert cfg.logging.level == "INFO"
 
     def test_overrides_win_over_env(self, monkeypatch):
