@@ -18,6 +18,7 @@ Agent-friendly usage::
     print(results[0].to_dict())
 """
 
+import os
 import re
 from typing import Any, Dict, Generator, List, Literal, Optional, Union, overload
 from pathlib import Path
@@ -71,6 +72,7 @@ class GlmOcr:
         timeout: Optional[int] = None,
         enable_layout: Optional[bool] = None,
         log_level: Optional[str] = None,
+        env_file: Optional[str] = None,
         # Extra knobs for self-hosted mode & GPU binding
         ocr_api_host: Optional[str] = None,
         ocr_api_port: Optional[int] = None,
@@ -92,9 +94,13 @@ class GlmOcr:
             timeout:  Request timeout in seconds.
             enable_layout: Whether to run layout detection.
             log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
+            env_file: Path to a ``.env`` file to load API key and other settings from.
         """
-        # If user provides api_key but no explicit mode, default to MaaS.
-        if api_key is not None and mode is None:
+        # If an API key is available (constructor arg or env var), default to MaaS.
+        # This ensures `GlmOcr()` with GLMOCR_API_KEY in env auto-selects MaaS
+        # even when the user has an old YAML with maas.enabled=false.
+        _has_api_key = api_key is not None or bool(os.environ.get("GLMOCR_API_KEY"))
+        if _has_api_key and mode is None:
             mode = "maas"
 
         # Build config: overrides > env vars > YAML > defaults
@@ -107,6 +113,7 @@ class GlmOcr:
             timeout=timeout,
             enable_layout=enable_layout,
             log_level=log_level,
+            env_file=env_file,
             ocr_api_host=ocr_api_host,
             ocr_api_port=ocr_api_port,
             cuda_visible_devices=cuda_visible_devices,
@@ -592,6 +599,7 @@ def parse(
     timeout: Optional[int] = None,
     enable_layout: Optional[bool] = None,
     log_level: Optional[str] = None,
+    env_file: Optional[str] = None,
     **kwargs: Any,
 ) -> Union[PipelineResult, List[PipelineResult], Generator[PipelineResult, None, None]]:
     """Convenience function: parse images or documents in one call.
@@ -657,6 +665,7 @@ def parse(
         timeout=timeout,
         enable_layout=enable_layout,
         log_level=log_level,
+        env_file=env_file,
     ) as parser:
         return parser.parse(
             images,

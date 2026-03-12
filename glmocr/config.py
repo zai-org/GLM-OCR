@@ -113,7 +113,8 @@ class MaaSApiConfig(_BaseConfig):
     """
 
     # Enable MaaS mode (passthrough to Zhipu cloud API)
-    enabled: bool = False
+    # Default: True — MaaS is the default mode after `pip install glmocr` (no GPU needed)
+    enabled: bool = True
 
     # API endpoint (default: Zhipu GLM-OCR layout_parsing API)
     api_url: str = "https://open.bigmodel.cn/api/paas/v4/layout_parsing"
@@ -235,14 +236,26 @@ def _coerce_env_value(dotted_path: str, raw: str) -> Any:
     return raw
 
 
-def _collect_env_overrides() -> Dict[str, Any]:
+def _collect_env_overrides(
+    env_file: Optional[Union[str, Path]] = None,
+) -> Dict[str, Any]:
     """Read GLMOCR_* values from ``.env`` file + real environment variables.
+
+    Args:
+        env_file: Explicit path to a ``.env`` file.  When provided, this file
+            is used instead of the auto-discovered one.  Raises
+            ``FileNotFoundError`` if the path does not exist.
 
     Priority: real ``os.environ`` > ``.env`` file.  This means a user can
     always override a ``.env`` value by exporting the variable in the shell.
     """
     # 1. Load .env file (does NOT mutate os.environ)
-    dotenv_path = _find_dotenv()
+    if env_file is not None:
+        dotenv_path = Path(env_file)
+        if not dotenv_path.is_file():
+            raise FileNotFoundError(f".env file not found: {dotenv_path}")
+    else:
+        dotenv_path = _find_dotenv()
     dotenv_vars: Dict[str, Optional[str]] = (
         dotenv_values(dotenv_path) if dotenv_path else {}
     )
@@ -319,6 +332,7 @@ class GlmOcrConfig(_BaseConfig):
         * ``timeout``        – request timeout in seconds
         * ``enable_layout``  – whether to run layout detection
         * ``log_level``      – logging level (DEBUG / INFO / …)
+        * ``env_file``       – explicit path to a ``.env`` file
 
         Any other keyword is silently ignored so that callers can safely
         forward ``**kwargs`` without worrying about typos crashing the SDK.
@@ -349,7 +363,8 @@ class GlmOcrConfig(_BaseConfig):
             data = {}
 
         # 2. Environment variable overrides
-        env_data = _collect_env_overrides()
+        env_file = overrides.pop("env_file", None)
+        env_data = _collect_env_overrides(env_file=env_file)
         if env_data:
             _deep_merge(data, env_data)
 

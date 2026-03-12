@@ -35,8 +35,14 @@ print(result.to_dict())
 ```
 
 ```bash
-# CLI
-glmocr parse image.png --output ./output/
+# CLI — pass API key directly (no env setup needed)
+glmocr parse image.png --api-key sk-xxx
+
+# Or load from a specific .env file
+glmocr parse image.png --env-file /path/to/.env
+
+# Or rely on env var / auto-discovered .env (set once, then omit)
+glmocr parse image.png
 glmocr parse ./scans/ --output ./output/ --stdout
 ```
 
@@ -184,10 +190,17 @@ else:
 
 ```bash
 # Parse a single file → saves to ./output/<stem>/
+# MaaS mode is the default; GLMOCR_API_KEY must be set (or use --api-key)
 glmocr parse image.png
+
+# Pass API key directly without any env setup
+glmocr parse image.png --api-key sk-xxx
 
 # Parse a directory → saves each file to ./output/<stem>/
 glmocr parse ./scans/
+
+# Use self-hosted vLLM/SGLang instead of cloud
+glmocr parse image.png --mode selfhosted
 
 # Specify output directory
 glmocr parse image.png --output ./results/
@@ -237,15 +250,18 @@ glmocr parse image.png --log-level DEBUG
 
 ### Full flag reference
 
-| Flag              | Default    | Description                              |
-| ----------------- | ---------- | ---------------------------------------- |
-| `--output / -o`   | `./output` | Output directory                         |
-| `--stdout`        | off        | Print JSON + Markdown to stdout          |
-| `--no-save`       | off        | Skip writing files (use with `--stdout`) |
-| `--json-only`     | off        | stdout JSON only, no Markdown            |
-| `--no-layout-vis` | off        | Skip layout visualization images         |
-| `--config / -c`   | none       | Path to YAML config override             |
-| `--log-level`     | `INFO`     | `DEBUG` / `INFO` / `WARNING` / `ERROR`   |
+| Flag              | Default    | Description                                           |
+| ----------------- | ---------- | ----------------------------------------------------- |
+| `--api-key / -k`  | env var    | API key for MaaS mode (overrides `GLMOCR_API_KEY`)    |
+| `--mode`          | `maas`     | `maas` (cloud, default) or `selfhosted` (local GPU)   |
+| `--env-file`      | auto       | Path to `.env` file (default: auto-discover from cwd) |
+| `--output / -o`   | `./output` | Output directory                                      |
+| `--stdout`        | off        | Print JSON + Markdown to stdout                       |
+| `--no-save`       | off        | Skip writing files (use with `--stdout`)              |
+| `--json-only`     | off        | stdout JSON only, no Markdown                         |
+| `--no-layout-vis` | off        | Skip layout visualization images                      |
+| `--config / -c`   | none       | Path to YAML config override                          |
+| `--log-level`     | `INFO`     | `DEBUG` / `INFO` / `WARNING` / `ERROR`                |
 
 ---
 
@@ -319,6 +335,6 @@ output_dir/
 
 ## Common Pitfalls
 
-- **`GLMOCR_API_KEY` not set**: SDK will not auto-enable MaaS; `parse()` returns an error result. Always set the key before calling.
+- **`GLMOCR_API_KEY` not set**: SDK defaults to MaaS mode. Without a key, `parse()` will fail with a clear error message and quick-fix instructions. Set via `export GLMOCR_API_KEY=sk-xxx`, add to a `.env` file, or pass `--api-key sk-xxx` to the CLI.
 - **Large PDFs**: Default timeout is 600s. For very long documents increase with `timeout=1200`.
 - **`result.json_result` is a string**: Happens when the model returns malformed JSON. The SDK preserves the raw string — parse or log it manually.

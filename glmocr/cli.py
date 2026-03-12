@@ -60,19 +60,28 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
     Examples:
-    # Parse a single image file
+    # Parse a single image (uses GLMOCR_API_KEY from environment)
   glmocr parse image.png
 
-    # Parse all images in a directory
-  glmocr parse ./images/
+    # Pass API key directly (no env setup needed)
+  glmocr parse image.png --api-key sk-xxx
 
-    # Disable layout detection (OCR-only): set pipeline.enable_layout=false
-    glmocr parse image.png --config my_config.yaml
+    # Parse all images in a directory
+  glmocr parse ./images/ --api-key sk-xxx
+
+    # Use self-hosted vLLM/SGLang instead of cloud API
+  glmocr parse image.png --mode selfhosted
 
     # Specify output directory
   glmocr parse image.png --output ./output/
 
-    # Specify config file
+    # Print results to stdout only (no files written)
+  glmocr parse image.png --api-key sk-xxx --stdout --no-save
+
+    # Load API key from a specific .env file
+  glmocr parse image.png --env-file /path/to/.env
+
+    # Specify custom config file
   glmocr parse image.png --config config.yaml
         """,
     )
@@ -119,6 +128,26 @@ def main():
         help="Output results to standard output (JSON format)",
     )
     parse_parser.add_argument(
+        "--api-key",
+        "-k",
+        type=str,
+        default=None,
+        help="API key for MaaS mode (overrides GLMOCR_API_KEY env var)",
+    )
+    parse_parser.add_argument(
+        "--mode",
+        type=str,
+        default=None,
+        choices=["maas", "selfhosted"],
+        help="Operation mode: 'maas' (cloud API, default) or 'selfhosted' (local vLLM/SGLang)",
+    )
+    parse_parser.add_argument(
+        "--env-file",
+        type=str,
+        default=None,
+        help="Path to .env file to load GLMOCR_API_KEY and other settings from",
+    )
+    parse_parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -144,7 +173,12 @@ def main():
         # Use GlmOcr API
         save_layout_vis = not args.no_layout_vis
 
-        with GlmOcr(config_path=args.config) as glm_parser:
+        with GlmOcr(
+            config_path=args.config,
+            api_key=args.api_key,
+            mode=args.mode,
+            env_file=args.env_file,
+        ) as glm_parser:
             logger.info(
                 "Using Pipeline (enable_layout=%s)...",
                 "true" if glm_parser.enable_layout else "false",
@@ -201,7 +235,18 @@ def main():
         logger.info("Interrupted by user")
         sys.exit(1)
     except Exception as e:
-        logger.error("Error: %s", e)
+        err_msg = str(e)
+        if "API key" in err_msg:
+            logger.error(
+                "%s\n\n"
+                "  Quick fix:\n"
+                "    export GLMOCR_API_KEY=sk-xxx          # set once in shell\n"
+                "    glmocr parse image.png --api-key sk-xxx  # or pass directly\n\n"
+                "  Get your free key at: https://open.bigmodel.cn",
+                err_msg,
+            )
+        else:
+            logger.error("Error: %s", e)
         logger.debug(traceback.format_exc())
         sys.exit(1)
 

@@ -32,7 +32,7 @@ pipeline:
   #
   # Note: When maas.enabled=true, the ocr_api and layout settings below are ignored.
   maas:
-    enabled: false # Set to true to use MaaS mode
+    enabled: true # Set to true to use MaaS mode
     api_url: https://open.bigmodel.cn/api/paas/v4/layout_parsing
     model: glm-ocr
     api_key: null # Required! Get from https://open.bigmodel.cn

@@ -104,8 +104,11 @@ class MaaSClient:
         self.api_key = config.api_key or os.getenv("GLMOCR_API_KEY")
         if not self.api_key:
             raise ValueError(
-                "API key is required for MaaS mode. "
-                "Set it in config.yaml or GLMOCR_API_KEY environment variable."
+                "MaaS mode requires an API key.\n"
+                "  Option 1 (env var):  export GLMOCR_API_KEY=sk-xxx\n"
+                "  Option 2 (CLI flag): glmocr parse image.png --api-key sk-xxx\n"
+                '  Option 3 (Python):   GlmOcr(api_key="sk-xxx")\n'
+                "  Get your key at:     https://open.bigmodel.cn"
             )
 
         # SSL verification
