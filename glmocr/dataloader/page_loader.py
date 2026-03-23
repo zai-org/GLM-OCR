@@ -26,6 +26,8 @@ from glmocr.utils.image_utils import (
     load_image_to_base64,
     pdf_to_images_pil,
     pdf_to_images_pil_iter,
+    pdf_bytes_to_images_pil,
+    pdf_bytes_to_images_pil_iter,
     PYPDFIUM2_AVAILABLE,
 )
 from glmocr.utils.logging import get_logger, get_profiler
@@ -162,6 +164,11 @@ class PageLoader:
 
     def _iter_source(self, source: str):
         """Yield pages from a single source one at a time."""
+        if source.startswith("data:application/pdf;base64,"):
+            pdf_bytes = base64.b64decode(source.split(",", 1)[1])
+            yield from self._iter_pdf_bytes(pdf_bytes)
+            return
+
         if source.startswith("file://"):
             file_path = source[7:]
         else:
@@ -205,6 +212,10 @@ class PageLoader:
 
         PDFs return all pages; images return a single-page list.
         """
+        if source.startswith("data:application/pdf;base64,"):
+            pdf_bytes = base64.b64decode(source.split(",", 1)[1])
+            return self._load_pdf_bytes(pdf_bytes)
+
         if source.startswith("file://"):
             file_path = source[7:]
         else:
@@ -259,6 +270,42 @@ class PageLoader:
             (time.perf_counter() - t0) * 1000,
         )
         return pages
+
+    def _load_pdf_bytes(self, pdf_bytes: bytes) -> List[Image.Image]:
+        """Load all pages from in-memory PDF bytes using pypdfium2 (no disk I/O)."""
+        if not PYPDFIUM2_AVAILABLE:
+            raise RuntimeError(
+                "PDF support requires pypdfium2. Install: pip install pypdfium2"
+            )
+        t0 = time.perf_counter()
+        end_page = self._compute_end_page()
+        pages = pdf_bytes_to_images_pil(
+            pdf_bytes,
+            dpi=self.pdf_dpi,
+            max_width_or_height=3500,
+            start_page_id=0,
+            end_page_id=end_page,
+        )
+        profiler.log(
+            "pdf_bytes_to_images_pil(in-memory)",
+            (time.perf_counter() - t0) * 1000,
+        )
+        return pages
+
+    def _iter_pdf_bytes(self, pdf_bytes: bytes):
+        """Yield PDF pages one at a time from in-memory bytes (streaming, no disk I/O)."""
+        if not PYPDFIUM2_AVAILABLE:
+            raise RuntimeError(
+                "PDF support requires pypdfium2. Install: pip install pypdfium2"
+            )
+        end_page = self._compute_end_page()
+        yield from pdf_bytes_to_images_pil_iter(
+            pdf_bytes,
+            dpi=self.pdf_dpi,
+            max_width_or_height=3500,
+            start_page_id=0,
+            end_page_id=end_page,
+        )
 
     # =========================================================================
     # API request building

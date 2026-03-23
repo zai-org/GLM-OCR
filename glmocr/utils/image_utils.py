@@ -286,6 +286,102 @@ def _page_to_image(page, dpi: int = 200, max_width_or_height: int = 3500):
     return image, scale
 
 
+def pdf_bytes_to_images_pil(
+    pdf_bytes: bytes,
+    dpi: int = 200,
+    max_width_or_height: int = 3500,
+    start_page_id: int = 0,
+    end_page_id: int = None,
+) -> list:
+    """Convert in-memory PDF bytes to list of PIL Images using pypdfium2.
+
+    Args:
+        pdf_bytes: Raw PDF bytes.
+        dpi: Render DPI.
+        max_width_or_height: Max width or height.
+        start_page_id: Start page index (0-based).
+        end_page_id: End page index (inclusive); None = last page.
+
+    Returns:
+        List of PIL.Image.
+    """
+    if not PYPDFIUM2_AVAILABLE:
+        raise ImportError(
+            "PDF support requires pypdfium2. Install with: pip install pypdfium2"
+        )
+    import pypdfium2 as pdfium
+
+    pdf = None
+    try:
+        pdf = pdfium.PdfDocument(pdf_bytes)
+        page_count = len(pdf)
+        if end_page_id is None or end_page_id < 0:
+            end_page_id = page_count - 1
+        if end_page_id >= page_count:
+            end_page_id = page_count - 1
+        images = []
+        for i in range(start_page_id, end_page_id + 1):
+            page = pdf[i]
+            try:
+                image, _ = _page_to_image(
+                    page, dpi=dpi, max_width_or_height=max_width_or_height
+                )
+                images.append(image)
+            finally:
+                page.close()
+        return images
+    finally:
+        if pdf is not None:
+            pdf.close()
+
+
+def pdf_bytes_to_images_pil_iter(
+    pdf_bytes: bytes,
+    dpi: int = 200,
+    max_width_or_height: int = 3500,
+    start_page_id: int = 0,
+    end_page_id: int = None,
+):
+    """Convert in-memory PDF bytes to PIL Images one page at a time (generator).
+
+    Args:
+        pdf_bytes: Raw PDF bytes.
+        dpi: Render DPI.
+        max_width_or_height: Max width or height.
+        start_page_id: Start page index (0-based).
+        end_page_id: End page index (inclusive); None = last page.
+
+    Yields:
+        PIL.Image per page.
+    """
+    if not PYPDFIUM2_AVAILABLE:
+        raise ImportError(
+            "PDF support requires pypdfium2. Install with: pip install pypdfium2"
+        )
+    import pypdfium2 as pdfium
+
+    pdf = None
+    try:
+        pdf = pdfium.PdfDocument(pdf_bytes)
+        page_count = len(pdf)
+        if end_page_id is None or end_page_id < 0:
+            end_page_id = page_count - 1
+        if end_page_id >= page_count:
+            end_page_id = page_count - 1
+        for i in range(start_page_id, end_page_id + 1):
+            page = pdf[i]
+            try:
+                image, _ = _page_to_image(
+                    page, dpi=dpi, max_width_or_height=max_width_or_height
+                )
+                yield image
+            finally:
+                page.close()
+    finally:
+        if pdf is not None:
+            pdf.close()
+
+
 def pdf_to_images_pil(
     pdf_path: str,
     dpi: int = 200,

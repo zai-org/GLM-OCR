@@ -1,10 +1,12 @@
 """GLM-OCR SDK Flask service."""
 
+import base64
 import os
 import sys
 import traceback
 import multiprocessing
-from typing import TYPE_CHECKING
+import urllib.request
+from typing import TYPE_CHECKING, List, Tuple
 
 try:
     from flask import Flask, request, jsonify
@@ -53,54 +55,134 @@ def create_app(config: "GlmOcrConfig") -> Flask:
     app.config["pipeline"] = pipeline
     app.config["doc_config"] = config
 
+    def _remote_url_to_data_uri(url: str) -> str:
+        """Fetch a remote URL and return a data: URI (no temp file)."""
+        req = urllib.request.Request(url, headers={"User-Agent": "glmocr/1.0"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            content_type = resp.headers.get_content_type() or "application/octet-stream"
+            data = resp.read()
+        b64 = base64.b64encode(data).decode()
+        return f"data:{content_type};base64,{b64}"
+
+    def _file_bytes_to_data_uri(file_bytes: bytes, content_type: str, filename: str = "") -> str:
+        """Convert uploaded file bytes to a data: URI.
+
+        Detects PDFs by magic bytes so the page_loader can route them correctly.
+        """
+        # Detect PDF by magic bytes (%PDF) regardless of declared content_type
+        if file_bytes[:4] == b"%PDF" or "pdf" in content_type.lower():
+            mime = "application/pdf"
+        elif content_type and content_type.startswith("image/"):
+            mime = content_type
+        else:
+            # Fallback: guess from filename extension
+            import mimetypes
+
+            guessed, _ = mimetypes.guess_type(filename or "")
+            mime = guessed or "application/octet-stream"
+        b64 = base64.b64encode(file_bytes).decode()
+        return f"data:{mime};base64,{b64}"
+
+    def _resolve_urls(raw_urls: List[str]) -> List[str]:
+        """Convert http/https signed URLs to data: URIs; pass others through."""
+        resolved = []
+        for url in raw_urls:
+            if url.startswith(("http://", "https://")):
+                resolved.append(_remote_url_to_data_uri(url))
+            else:
+                resolved.append(url)
+        return resolved
+
     @app.route("/glmocr/parse", methods=["POST"])
     def parse():
         """Document parsing endpoint.
 
-        Request:
-            {
-                "images": ["url1", "url2", ...],  # image URLs (http/https/file/data)
-            }
+        Accepts three Content-Type variants:
+
+        1. application/json (original):
+            {"images": ["file://...", "data:...", "https://signed-url..."]}
+
+        2. multipart/form-data (file upload):
+            files=<file1>&files=<file2>&urls=https://...&urls=https://...
+            Field name "files" for uploaded files, "urls" for remote URLs.
+
+        3. Mixed multipart: both "files" and "urls" fields together.
+
+        Signed https:// URLs (in JSON or multipart) are fetched in-memory and
+        converted to data: URIs — no temp files are written.
 
         Response:
-            {
-                "json_result": {...},
-                "markdown_result": "..."
-            }
+            {"json_result": {...}, "markdown_result": "..."}
         """
-        # Validate Content-Type
-        if request.headers.get("Content-Type") != "application/json":
+        content_type = request.content_type or ""
+
+        if content_type.startswith("multipart/form-data"):
+            # --- multipart/form-data ---
+            image_urls: List[str] = []
+
+            # Uploaded files → in-memory data: URIs
+            for uploaded in request.files.getlist("files"):
+                file_bytes = uploaded.read()
+                if not file_bytes:
+                    continue
+                data_uri = _file_bytes_to_data_uri(
+                    file_bytes,
+                    uploaded.mimetype or "",
+                    uploaded.filename or "",
+                )
+                image_urls.append(data_uri)
+
+            # Remote URLs in the form (signed URLs or plain URLs)
+            for url in request.form.getlist("urls"):
+                url = url.strip()
+                if url:
+                    image_urls.append(url)
+
+            if not image_urls:
+                return jsonify({"error": "No files or urls provided"}), 400
+
+            # Resolve any http/https URLs to data: URIs
+            try:
+                image_urls = _resolve_urls(image_urls)
+            except Exception as e:
+                return jsonify({"error": f"Failed to fetch URL: {e}"}), 400
+
+        elif "application/json" in content_type:
+            # --- application/json ---
+            try:
+                data = request.get_json(force=True)
+            except Exception:
+                return jsonify({"error": "Invalid JSON payload"}), 400
+
+            images = data.get("images", [])
+            if isinstance(images, str):
+                images = [images]
+            if not images:
+                return jsonify({"error": "No images provided"}), 400
+
+            # Resolve signed http/https URLs to data: URIs
+            try:
+                image_urls = _resolve_urls(images)
+            except Exception as e:
+                return jsonify({"error": f"Failed to fetch URL: {e}"}), 400
+
+        else:
             return (
                 jsonify(
-                    {"error": "Invalid Content-Type. Expected 'application/json'."}
+                    {
+                        "error": "Unsupported Content-Type. Use application/json or multipart/form-data."
+                    }
                 ),
-                400,
+                415,
             )
 
-        # Parse JSON payload
-        try:
-            data = request.json
-        except Exception:
-            return jsonify({"error": "Invalid JSON payload"}), 400
-
-        images = data.get("images", [])
-        if isinstance(images, str):
-            images = [images]
-
-        if not images:
-            return jsonify({"error": "No images provided"}), 400
-
-        # Build pipeline request
+        # Build pipeline request_data
         messages = [{"role": "user", "content": []}]
-        for image_url in images:
-            messages[0]["content"].append(
-                {"type": "image_url", "image_url": {"url": image_url}}
-            )
-
+        for url in image_urls:
+            messages[0]["content"].append({"type": "image_url", "image_url": {"url": url}})
         request_data = {"messages": messages}
 
         try:
-            # Pipeline.process() yields one result per input unit; merge for single response
             results = list(
                 pipeline.process(
                     request_data,
@@ -109,10 +191,7 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                 )
             )
             if not results:
-                return (
-                    jsonify({"json_result": None, "markdown_result": ""}),
-                    200,
-                )
+                return jsonify({"json_result": None, "markdown_result": ""}), 200
             if len(results) == 1:
                 r = results[0]
                 return (
@@ -124,18 +203,11 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                     ),
                     200,
                 )
-            # Multiple units: merge json as list, markdown with separator
+            # Multiple units: list of json_results, markdown separated by ---
             json_result = [r.json_result for r in results]
-            markdown_result = "\n\n---\n\n".join(
-                r.markdown_result or "" for r in results
-            )
+            markdown_result = "\n\n---\n\n".join(r.markdown_result or "" for r in results)
             return (
-                jsonify(
-                    {
-                        "json_result": json_result,
-                        "markdown_result": markdown_result,
-                    }
-                ),
+                jsonify({"json_result": json_result, "markdown_result": markdown_result}),
                 200,
             )
 
@@ -190,9 +262,7 @@ def main():
         server_config = config.server
         logger.info("")
         logger.info("=" * 60)
-        logger.info(
-            "GlmOcr Server starting on %s:%d...", server_config.host, server_config.port
-        )
+        logger.info("GlmOcr Server starting on %s:%d...", server_config.host, server_config.port)
         logger.info("API endpoint: /glmocr/parse")
         logger.info("=" * 60)
         logger.info("")
