@@ -1,0 +1,38 @@
+pipeline:
+  enable_layout: true
+  layout:
+    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
+    label_task_mapping:
+      ocr:
+        - abstract
+        - aside_text
+        - content
+        - doc_title
+        - figure_title
+        - footnote
+        - header
+        - footer
+        - number
+        - paragraph_title
+        - reference
+        - reference_content
+        - text
+        - vision_footnote
+      detect:
+        - table        # bbox returned, OCR skipped, content: ""
+      abandon:
+        - algorithm
+        - chart
+        - formula
+        - formula_number
+        - image
+        - seal
+  maas:
+    enabled: false
+  ocr_api:
+    api_host: 127.0.0.1
+    api_port: 1234
+    api_scheme: http
+    model: glm-ocr
+  page_loader:
+    max_tokens: 8192

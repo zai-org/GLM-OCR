@@ -465,7 +465,7 @@ class Pipeline:
                     except queue.Empty:
                         if processing_complete and len(futures) == 0:
                             for region, task_type, page_idx in pending_skip:
-                                region["content"] = None
+                                region["content"] = "" if task_type == "detect" else None
                                 with state.results_lock:
                                     state.recognition_results.append((page_idx, region))
                                 maybe_notify_ready_units(page_idx)
@@ -480,7 +480,7 @@ class Pipeline:
                         continue
                     if item_type == "region":
                         cropped_image, region, task_type, page_idx = data
-                        if task_type == "skip":
+                        if task_type in ("skip", "detect"):
                             pending_skip.append((region, task_type, page_idx))
                         else:
                             req = self.page_loader.build_request_from_image(

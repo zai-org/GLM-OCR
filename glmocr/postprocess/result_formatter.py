@@ -170,9 +170,9 @@ class ResultFormatter(BasePostProcessor):
                         result["native_label"],
                     )
 
-                    # Skip empty content (after formatting)
+                    # Skip empty content (after formatting), but keep detect regions
                     content = result.get("content")
-                    if isinstance(content, str) and content.strip() == "":
+                    if isinstance(content, str) and content.strip() == "" and result.get("task_type") != "detect":
                         continue
 
                     # Update index

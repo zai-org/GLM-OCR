@@ -202,6 +202,7 @@ class LayoutConfig(_BaseConfig):
     layout_unclip_ratio: Optional[Any] = None
     layout_merge_bboxes_mode: Union[str, Dict[int, str]] = "large"
     label_task_mapping: Optional[Dict[str, Any]] = None
+    id2label: Optional[Dict[int, str]] = None
 
     @field_validator("device")
     @classmethod
