@@ -21,6 +21,7 @@ __all__ = [
     "MissingApiKeyError",
     "GlmOcr",
     "parse",
+    "extract",
 ]
 
 
@@ -34,6 +35,7 @@ _LAZY_ATTRS = {
     "MissingApiKeyError": ("maas_client", "MissingApiKeyError"),
     "GlmOcr": ("api", "GlmOcr"),
     "parse": ("api", "parse"),
+    "extract": ("api", "extract"),
 }
 
 
@@ -56,7 +58,7 @@ def __dir__():
 
 if TYPE_CHECKING:  # pragma: no cover
     from . import dataloader, layout, postprocess, utils
-    from .api import GlmOcr, parse
+    from .api import GlmOcr, parse, extract
     from .config import GlmOcrConfig, load_config
     from .maas_client import MaaSClient, MissingApiKeyError
     from .parser_result import PipelineResult
