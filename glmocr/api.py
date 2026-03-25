@@ -20,6 +20,8 @@ Agent-friendly usage::
 
 import os
 import re
+import shutil
+import tempfile
 from typing import Any, Dict, Generator, List, Literal, Optional, Union, overload
 from pathlib import Path
 
@@ -154,10 +156,13 @@ class GlmOcr:
             self._pipeline.start()
             logger.info("GLM-OCR initialized in self-hosted mode")
 
+    # Type alias for accepted input sources
+    InputSource = Union[str, bytes, Path]
+
     @overload
     def parse(
         self,
-        images: str,
+        images: "GlmOcr.InputSource",
         *,
         stream: Literal[False] = ...,
         save_layout_visualization: bool = ...,
@@ -167,7 +172,7 @@ class GlmOcr:
     @overload
     def parse(
         self,
-        images: List[str],
+        images: List["GlmOcr.InputSource"],
         *,
         stream: Literal[False] = ...,
         save_layout_visualization: bool = ...,
@@ -177,7 +182,7 @@ class GlmOcr:
     @overload
     def parse(
         self,
-        images: Union[str, List[str]],
+        images: Union["GlmOcr.InputSource", List["GlmOcr.InputSource"]],
         *,
         stream: Literal[True],
         save_layout_visualization: bool = ...,
@@ -186,7 +191,7 @@ class GlmOcr:
 
     def parse(
         self,
-        images: Union[str, List[str]],
+        images: Union["GlmOcr.InputSource", List["GlmOcr.InputSource"]],
         *,
         stream: bool = False,
         save_layout_visualization: bool = True,
@@ -196,11 +201,19 @@ class GlmOcr:
     ]:
         """Predict / parse images or documents.
 
-        Supports local paths and URLs (file://, http://, https://, data:).
+        Supports local paths, ``Path`` objects, URLs (file://, http://, https://,
+        data:// — including presigned URLs), and raw ``bytes``.
         Supports image files (jpg, png, bmp, gif, webp) and PDF files.
 
         Args:
-            images: Image path/URL — a single ``str`` or a ``list`` of strings.
+            images: A single input or list of inputs. Each input can be:
+
+                - ``str``: local file path, or URL (http/https/file/data).
+                  Presigned URLs (e.g. S3) are supported.
+                - ``bytes``: raw file content (image or PDF).
+                  Useful for multipart/form-data uploads.
+                - ``Path``: a ``pathlib.Path`` to a local file.
+
             stream: If ``True``, yields one :class:`PipelineResult` at a time (avoids
                 holding all results in memory). If ``False``, returns a single result
                 or a list, depending on *images*.
@@ -210,23 +223,31 @@ class GlmOcr:
 
         Returns:
             - When ``stream=False`` (default): a single ``PipelineResult`` if *images*
-              is a ``str``, or a ``List[PipelineResult]`` if *images* is a list.
+              is a single input, or a ``List[PipelineResult]`` if *images* is a list.
             - When ``stream=True``: a generator that yields one ``PipelineResult``
               per input.
 
         Example:
             # Single file — returns one PipelineResult
             result = parser.parse("image.png")
-            result.save(output_dir="./output")
 
-            # Multiple files — returns a list
-            results = parser.parse(["img1.png", "doc.pdf"])
+            # Path object
+            result = parser.parse(Path("document.pdf"))
+
+            # Presigned URL
+            result = parser.parse("https://bucket.s3.amazonaws.com/doc.pdf?X-Amz-...")
+
+            # Raw bytes (e.g. from a multipart/form-data upload)
+            result = parser.parse(uploaded_file.read())
+
+            # Mixed list
+            results = parser.parse([b"...pdf bytes...", "https://presigned/img.png"])
 
             # Stream to avoid large in-memory results
             for r in parser.parse(["a.pdf", "b.pdf"], stream=True):
                 r.save(output_dir="./output")
         """
-        _single = isinstance(images, str)
+        _single = isinstance(images, (str, bytes, Path))
         if _single:
             images = [images]
 
@@ -239,6 +260,51 @@ class GlmOcr:
             result_list = self._parse_selfhosted(images, save_layout_visualization)
 
         return result_list[0] if _single else result_list
+
+    @staticmethod
+    def _guess_suffix(data: bytes) -> str:
+        """Guess file suffix from magic bytes."""
+        if data[:5] == b"%PDF-":
+            return ".pdf"
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return ".png"
+        if data[:3] == b"\xff\xd8\xff":
+            return ".jpg"
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return ".webp"
+        if data[:3] == b"GIF":
+            return ".gif"
+        if data[:2] == b"BM":
+            return ".bmp"
+        return ".bin"
+
+    def _resolve_inputs(
+        self, images: List[Union[str, bytes, Path]]
+    ) -> tuple:
+        """Convert bytes/Path inputs to file path strings.
+
+        Returns:
+            (resolved_paths, temp_dir) — *temp_dir* is ``None`` when no temp
+            files were created; otherwise the caller must clean it up.
+        """
+        resolved: List[str] = []
+        temp_dir: Optional[str] = None
+
+        for idx, img in enumerate(images):
+            if isinstance(img, bytes):
+                if temp_dir is None:
+                    temp_dir = tempfile.mkdtemp(prefix="glmocr_upload_")
+                suffix = self._guess_suffix(img)
+                path = os.path.join(temp_dir, f"input_{idx}{suffix}")
+                with open(path, "wb") as f:
+                    f.write(img)
+                resolved.append(path)
+            elif isinstance(img, Path):
+                resolved.append(str(img.absolute()))
+            else:
+                resolved.append(str(img))
+
+        return resolved, temp_dir
 
     def _parse_stream(
         self,
@@ -433,39 +499,42 @@ class GlmOcr:
 
     def _parse_selfhosted(
         self,
-        images: List[str],
+        images: List[Union[str, bytes, Path]],
         save_layout_visualization: bool = True,
     ) -> List[PipelineResult]:
         """Parse using self-hosted vLLM/SGLang pipeline."""
-        import tempfile
+        resolved, temp_dir = self._resolve_inputs(images)
+        try:
+            messages = [{"role": "user", "content": []}]
+            for image in resolved:
+                if image.startswith(("http://", "https://", "data:", "file://")):
+                    url = image
+                else:
+                    url = f"file://{Path(image).absolute()}"
+                messages[0]["content"].append(
+                    {"type": "image_url", "image_url": {"url": url}}
+                )
+            request_data = {"messages": messages}
 
-        messages = [{"role": "user", "content": []}]
-        for image in images:
-            if image.startswith(("http://", "https://", "data:", "file://")):
-                url = image
-            else:
-                url = f"file://{Path(image).absolute()}"
-            messages[0]["content"].append(
-                {"type": "image_url", "image_url": {"url": url}}
+            layout_vis_dir = None
+            if self._pipeline.enable_layout and save_layout_visualization:
+                layout_vis_dir = tempfile.mkdtemp(prefix="layout_vis_")
+
+            results = list(
+                self._pipeline.process(
+                    request_data,
+                    save_layout_visualization=save_layout_visualization,
+                    layout_vis_output_dir=layout_vis_dir,
+                )
             )
-        request_data = {"messages": messages}
-
-        layout_vis_dir = None
-        if self._pipeline.enable_layout and save_layout_visualization:
-            layout_vis_dir = tempfile.mkdtemp(prefix="layout_vis_")
-
-        results = list(
-            self._pipeline.process(
-                request_data,
-                save_layout_visualization=save_layout_visualization,
-                layout_vis_output_dir=layout_vis_dir,
-            )
-        )
-        return results
+            return results
+        finally:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _stream_parse_selfhosted(
         self,
-        images: List[str],
+        images: List[Union[str, bytes, Path]],
         save_layout_visualization: bool = True,
     ) -> Generator[PipelineResult, None, None]:
         """Streaming variant of self-hosted parse().
@@ -473,29 +542,32 @@ class GlmOcr:
         Wraps ``Pipeline.process(...)`` and yields results as soon as they
         become available from the async pipeline.
         """
-        import tempfile
+        resolved, temp_dir = self._resolve_inputs(images)
+        try:
+            messages = [{"role": "user", "content": []}]
+            for image in resolved:
+                if image.startswith(("http://", "https://", "data:", "file://")):
+                    url = image
+                else:
+                    url = f"file://{Path(image).absolute()}"
+                messages[0]["content"].append(
+                    {"type": "image_url", "image_url": {"url": url}}
+                )
+            request_data = {"messages": messages}
 
-        messages = [{"role": "user", "content": []}]
-        for image in images:
-            if image.startswith(("http://", "https://", "data:", "file://")):
-                url = image
-            else:
-                url = f"file://{Path(image).absolute()}"
-            messages[0]["content"].append(
-                {"type": "image_url", "image_url": {"url": url}}
-            )
-        request_data = {"messages": messages}
+            layout_vis_dir = None
+            if self._pipeline.enable_layout and save_layout_visualization:
+                layout_vis_dir = tempfile.mkdtemp(prefix="layout_vis_")
 
-        layout_vis_dir = None
-        if self._pipeline.enable_layout and save_layout_visualization:
-            layout_vis_dir = tempfile.mkdtemp(prefix="layout_vis_")
-
-        for result in self._pipeline.process(
-            request_data,
-            save_layout_visualization=save_layout_visualization,
-            layout_vis_output_dir=layout_vis_dir,
-        ):
-            yield result
+            for result in self._pipeline.process(
+                request_data,
+                save_layout_visualization=save_layout_visualization,
+                layout_vis_output_dir=layout_vis_dir,
+            ):
+                yield result
+        finally:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     def parse_maas(
         self,

@@ -1,10 +1,12 @@
 """GLM-OCR SDK Flask service."""
 
 import os
+import shutil
 import sys
+import tempfile
 import traceback
 import multiprocessing
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 try:
     from flask import Flask, request, jsonify
@@ -53,31 +55,89 @@ def create_app(config: "GlmOcrConfig") -> Flask:
     app.config["pipeline"] = pipeline
     app.config["doc_config"] = config
 
+    def _build_messages(image_urls: List[str]) -> dict:
+        """Build pipeline request_data from a list of image URL strings."""
+        messages = [{"role": "user", "content": []}]
+        for image_url in image_urls:
+            messages[0]["content"].append(
+                {"type": "image_url", "image_url": {"url": image_url}}
+            )
+        return {"messages": messages}
+
+    def _format_results(results):
+        """Format pipeline results into a JSON response tuple."""
+        if not results:
+            return jsonify({"json_result": None, "markdown_result": ""}), 200
+        if len(results) == 1:
+            r = results[0]
+            return (
+                jsonify(
+                    {
+                        "json_result": r.json_result,
+                        "markdown_result": r.markdown_result or "",
+                    }
+                ),
+                200,
+            )
+        json_result = [r.json_result for r in results]
+        markdown_result = "\n\n---\n\n".join(
+            r.markdown_result or "" for r in results
+        )
+        return (
+            jsonify(
+                {
+                    "json_result": json_result,
+                    "markdown_result": markdown_result,
+                }
+            ),
+            200,
+        )
+
     @app.route("/glmocr/parse", methods=["POST"])
     def parse():
         """Document parsing endpoint.
 
-        Request:
+        Accepts two content types:
+
+        **application/json**::
+
             {
-                "images": ["url1", "url2", ...],  # image URLs (http/https/file/data)
+                "images": ["url1", "url2", ...],  # URLs or presigned URLs
             }
 
-        Response:
+        **multipart/form-data**::
+
+            files:  one or more file uploads (field name ``files``)
+            urls:   one or more URL strings  (field name ``urls``)
+
+        Response::
+
             {
                 "json_result": {...},
                 "markdown_result": "..."
             }
         """
-        # Validate Content-Type
-        if request.headers.get("Content-Type") != "application/json":
+        content_type = (request.content_type or "").split(";")[0].strip().lower()
+
+        if content_type == "multipart/form-data":
+            return _handle_multipart(pipeline)
+        elif content_type == "application/json":
+            return _handle_json(pipeline)
+        else:
             return (
                 jsonify(
-                    {"error": "Invalid Content-Type. Expected 'application/json'."}
+                    {
+                        "error": (
+                            "Unsupported Content-Type. "
+                            "Expected 'application/json' or 'multipart/form-data'."
+                        )
+                    }
                 ),
                 400,
             )
 
-        # Parse JSON payload
+    def _handle_json(pipeline):
+        """Handle application/json requests."""
         try:
             data = request.json
         except Exception:
@@ -90,17 +150,9 @@ def create_app(config: "GlmOcrConfig") -> Flask:
         if not images:
             return jsonify({"error": "No images provided"}), 400
 
-        # Build pipeline request
-        messages = [{"role": "user", "content": []}]
-        for image_url in images:
-            messages[0]["content"].append(
-                {"type": "image_url", "image_url": {"url": image_url}}
-            )
-
-        request_data = {"messages": messages}
+        request_data = _build_messages(images)
 
         try:
-            # Pipeline.process() yields one result per input unit; merge for single response
             results = list(
                 pipeline.process(
                     request_data,
@@ -108,41 +160,64 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                     layout_vis_output_dir=None,
                 )
             )
-            if not results:
-                return (
-                    jsonify({"json_result": None, "markdown_result": ""}),
-                    200,
+            return _format_results(results)
+        except Exception as e:
+            logger.error("Parse error: %s", e)
+            logger.debug(traceback.format_exc())
+            return jsonify({"error": f"Parse error: {str(e)}"}), 500
+
+    def _handle_multipart(pipeline):
+        """Handle multipart/form-data requests (file uploads + URLs)."""
+        from pathlib import Path as _Path
+
+        uploaded_files = request.files.getlist("files")
+        url_values = request.form.getlist("urls")
+
+        if not uploaded_files and not url_values:
+            return jsonify({"error": "No files or urls provided"}), 400
+
+        temp_dir = None
+        try:
+            image_paths: List[str] = []
+
+            # Save uploaded files to a temp directory
+            if uploaded_files:
+                temp_dir = tempfile.mkdtemp(prefix="glmocr_upload_")
+                for idx, f in enumerate(uploaded_files):
+                    filename = f.filename or f"upload_{idx}"
+                    # Sanitise: keep only the basename to prevent path traversal
+                    safe_name = _Path(filename).name or f"upload_{idx}"
+                    save_path = os.path.join(temp_dir, f"{idx}_{safe_name}")
+                    f.save(save_path)
+                    image_paths.append(save_path)
+
+            # Append any URL strings (presigned URLs, etc.)
+            for url in url_values:
+                url = url.strip()
+                if url:
+                    image_paths.append(url)
+
+            if not image_paths:
+                return jsonify({"error": "No valid files or urls provided"}), 400
+
+            request_data = _build_messages(image_paths)
+
+            results = list(
+                pipeline.process(
+                    request_data,
+                    save_layout_visualization=False,
+                    layout_vis_output_dir=None,
                 )
-            if len(results) == 1:
-                r = results[0]
-                return (
-                    jsonify(
-                        {
-                            "json_result": r.json_result,
-                            "markdown_result": r.markdown_result or "",
-                        }
-                    ),
-                    200,
-                )
-            # Multiple units: merge json as list, markdown with separator
-            json_result = [r.json_result for r in results]
-            markdown_result = "\n\n---\n\n".join(
-                r.markdown_result or "" for r in results
             )
-            return (
-                jsonify(
-                    {
-                        "json_result": json_result,
-                        "markdown_result": markdown_result,
-                    }
-                ),
-                200,
-            )
+            return _format_results(results)
 
         except Exception as e:
             logger.error("Parse error: %s", e)
             logger.debug(traceback.format_exc())
             return jsonify({"error": f"Parse error: {str(e)}"}), 500
+        finally:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     @app.route("/health", methods=["GET"])
     def health():

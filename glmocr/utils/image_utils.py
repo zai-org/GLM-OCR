@@ -123,7 +123,14 @@ def load_image_to_base64(
         if image_source.startswith("file://"):
             image_source = image_source[7:]
 
-        if os.path.isfile(image_source):
+        if image_source.startswith(("http://", "https://")):
+            # Remote URL (including presigned URLs)
+            import requests as _requests
+
+            resp = _requests.get(image_source, timeout=120)
+            resp.raise_for_status()
+            image = Image.open(io.BytesIO(resp.content))
+        elif os.path.isfile(image_source):
             # Local file path (PDFs are handled via PageLoader)
             with open(image_source, "rb") as f:
                 image_data = f.read()
