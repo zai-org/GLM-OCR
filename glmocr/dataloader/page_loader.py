@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple, Union
 from PIL import Image
 
 
+import requests as _requests
+
 from glmocr.utils.image_utils import (
     load_image_to_base64,
     pdf_to_images_pil,
@@ -160,10 +162,23 @@ class PageLoader:
             for page in self._iter_source(source):
                 yield page, unit_idx
 
+    def _download_url(self, url: str) -> bytes:
+        """Download content from an HTTP(S) URL (including presigned URLs)."""
+        resp = _requests.get(url, timeout=120)
+        resp.raise_for_status()
+        return resp.content
+
+    def _is_pdf_bytes(self, data: bytes, content_type: str = "") -> bool:
+        """Check if bytes represent a PDF."""
+        return "application/pdf" in content_type or data[:5] == b"%PDF-"
+
     def _iter_source(self, source: str):
         """Yield pages from a single source one at a time."""
         if source.startswith("file://"):
             file_path = source[7:]
+        elif source.startswith(("http://", "https://")):
+            yield from self._iter_url_source(source)
+            return
         else:
             file_path = source
 
@@ -200,6 +215,52 @@ class PageLoader:
         ):
             yield image
 
+    def _load_url_source(self, url: str) -> List[Image.Image]:
+        """Download from HTTP(S) URL and load as image or PDF pages."""
+        import tempfile as _tempfile
+
+        data = self._download_url(url)
+        content_type = ""
+        try:
+            # Re-fetch would be wasteful; sniff from bytes instead.
+            pass
+        except Exception:
+            pass
+
+        if self._is_pdf_bytes(data, content_type):
+            with _tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+                f.write(data)
+                temp_path = f.name
+            try:
+                return self._load_pdf(temp_path)
+            finally:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+
+        return [Image.open(BytesIO(data))]
+
+    def _iter_url_source(self, url: str):
+        """Download from HTTP(S) URL and yield pages (streaming for PDFs)."""
+        import tempfile as _tempfile
+
+        data = self._download_url(url)
+
+        if self._is_pdf_bytes(data):
+            with _tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+                f.write(data)
+                temp_path = f.name
+            try:
+                yield from self._iter_pdf(temp_path)
+            finally:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+        else:
+            yield Image.open(BytesIO(data))
+
     def _load_source(self, source: str) -> List[Image.Image]:
         """Load a single source and return a list of pages.
 
@@ -207,6 +268,8 @@ class PageLoader:
         """
         if source.startswith("file://"):
             file_path = source[7:]
+        elif source.startswith(("http://", "https://")):
+            return self._load_url_source(source)
         else:
             file_path = source
 
@@ -228,6 +291,11 @@ class PageLoader:
 
             elif source.startswith("file://"):
                 return Image.open(source[7:])
+
+            # Remote URL (including presigned URLs)
+            elif source.startswith(("http://", "https://")):
+                data = self._download_url(source)
+                return Image.open(BytesIO(data))
 
             # Local file
             elif os.path.isfile(source):
