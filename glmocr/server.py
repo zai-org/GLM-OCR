@@ -270,6 +270,11 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                 400,
             )
 
+    _SCHEMALESS_EXTRACTION_PROMPT = (
+        "请将以下文档内容转换为结构化JSON格式输出。"
+        "根据文档内容自动识别字段并组织为合理的JSON结构:"
+    )
+
     def _build_extraction_prompt(schema_raw, prompt_override=None):
         """Resolve schema and build the full extraction prompt string."""
         import json as _json
@@ -310,8 +315,11 @@ def create_app(config: "GlmOcrConfig") -> Flask:
 
         if not images:
             return jsonify({"error": "No images provided"}), 400
+
         if not schema_raw:
-            return jsonify({"error": "No schema provided"}), 400
+            # No schema: parse first, then convert markdown to JSON
+            extraction_prompt = prompt_override or _SCHEMALESS_EXTRACTION_PROMPT
+            return _handle_schemaless_extract(pipeline, images, extraction_prompt)
 
         try:
             extraction_prompt = _build_extraction_prompt(schema_raw, prompt_override)
@@ -504,6 +512,12 @@ def create_app(config: "GlmOcrConfig") -> Flask:
         combined_prompt = (
             f"以下是文档内容:\n\n{full_markdown}\n\n{extraction_prompt}"
         )
+        # Estimate input tokens so we can request as many output tokens as
+        # the model allows without exceeding its context window.  A rough
+        # heuristic of 1 token ≈ 3 characters works well for mixed
+        # CJK/Latin text and keeps a small safety margin.
+        _estimated_input_tokens = len(combined_prompt) // 3
+        _max_output = max(pipeline.page_loader.max_tokens - _estimated_input_tokens, 512)
         req = {
             "messages": [
                 {
@@ -511,8 +525,8 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                     "content": combined_prompt,
                 }
             ],
-            "max_tokens": pipeline.page_loader.max_tokens,
-            "temperature": pipeline.page_loader.temperature,
+            "max_tokens": _max_output,
+            "temperature": 0.1,
             "top_p": pipeline.page_loader.top_p,
             "top_k": pipeline.page_loader.top_k,
             "repetition_penalty": pipeline.page_loader.repetition_penalty,
@@ -540,6 +554,93 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             logger.warning("Extract JSON parse failed: %s", exc)
             return None
 
+    def _handle_schemaless_extract(pipeline, images, extraction_prompt):
+        """Extract without schema: parse to markdown, then convert to JSON.
+
+        1. Run the normal parse pipeline to get markdown.
+        2. Send the markdown + extraction prompt to the VLM to produce JSON.
+        """
+        try:
+            request_data = _build_messages(images)
+            results = list(
+                pipeline.process(
+                    request_data,
+                    save_layout_visualization=False,
+                    layout_vis_output_dir=None,
+                )
+            )
+
+            if not results:
+                return jsonify({"data": None}), 200
+
+            full_markdown = "\n\n---\n\n".join(
+                r.markdown_result or "" for r in results
+            )
+
+            if not full_markdown.strip():
+                logger.warning("Schemaless extract: parse produced empty markdown")
+                return jsonify({"data": None}), 200
+
+            logger.debug(
+                "Schemaless extract markdown (truncated): %s",
+                full_markdown[:500],
+            )
+
+            # Send markdown + prompt to VLM to convert to JSON
+            combined_prompt = (
+                f"以下是文档内容:\n\n{full_markdown}\n\n{extraction_prompt}"
+            )
+            _estimated_input_tokens = len(combined_prompt) // 3
+            _max_output = max(
+                pipeline.page_loader.max_tokens - _estimated_input_tokens, 512
+            )
+            req = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": combined_prompt,
+                    }
+                ],
+                "max_tokens": _max_output,
+                "temperature": 0.1,
+                "top_p": pipeline.page_loader.top_p,
+                "top_k": pipeline.page_loader.top_k,
+                "repetition_penalty": pipeline.page_loader.repetition_penalty,
+            }
+
+            response, status_code = pipeline.ocr_client.process(req)
+            if status_code != 200:
+                logger.error(
+                    "Schemaless extract VLM call failed (%s): %s",
+                    status_code,
+                    response,
+                )
+                return jsonify({"error": "VLM extraction failed"}), 500
+
+            content = (
+                response.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            ) or response.get("response", "")
+
+            logger.debug(
+                "Schemaless extract raw content (truncated): %s",
+                content[:500],
+            )
+
+            try:
+                data = _parse_json_from_text(content)
+            except ValueError as exc:
+                logger.warning("Schemaless extract JSON parse failed: %s", exc)
+                data = None
+
+            return jsonify({"data": data}), 200
+
+        except Exception as e:
+            logger.error("Schemaless extract error: %s", e)
+            logger.debug(traceback.format_exc())
+            return jsonify({"error": f"Extract error: {str(e)}"}), 500
+
     def _handle_extract_multipart(pipeline):
         """Handle multipart/form-data extraction requests."""
         import json as _json
@@ -552,18 +653,19 @@ def create_app(config: "GlmOcrConfig") -> Flask:
 
         if not uploaded_files and not url_values:
             return jsonify({"error": "No files or urls provided"}), 400
-        if not schema_str:
-            return jsonify({"error": "No schema provided"}), 400
 
-        try:
-            schema_raw = _json.loads(schema_str)
-        except _json.JSONDecodeError:
-            return jsonify({"error": "schema must be valid JSON"}), 400
+        if schema_str:
+            try:
+                schema_raw = _json.loads(schema_str)
+            except _json.JSONDecodeError:
+                return jsonify({"error": "schema must be valid JSON"}), 400
 
-        try:
-            extraction_prompt = _build_extraction_prompt(schema_raw, prompt_override)
-        except (TypeError, ValueError) as e:
-            return jsonify({"error": f"Invalid schema: {e}"}), 400
+            try:
+                extraction_prompt = _build_extraction_prompt(schema_raw, prompt_override)
+            except (TypeError, ValueError) as e:
+                return jsonify({"error": f"Invalid schema: {e}"}), 400
+        else:
+            extraction_prompt = prompt_override or _SCHEMALESS_EXTRACTION_PROMPT
 
         temp_dir = None
         try:
@@ -585,6 +687,9 @@ def create_app(config: "GlmOcrConfig") -> Flask:
 
             if not image_paths:
                 return jsonify({"error": "No valid files or urls provided"}), 400
+
+            if not schema_str:
+                return _handle_schemaless_extract(pipeline, image_paths, extraction_prompt)
 
             maas_config = app.config["doc_config"].pipeline.maas
             if maas_config.enabled:
