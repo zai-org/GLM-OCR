@@ -512,12 +512,6 @@ def create_app(config: "GlmOcrConfig") -> Flask:
         combined_prompt = (
             f"以下是文档内容:\n\n{full_markdown}\n\n{extraction_prompt}"
         )
-        # Estimate input tokens so we can request as many output tokens as
-        # the model allows without exceeding its context window.  A rough
-        # heuristic of 1 token ≈ 3 characters works well for mixed
-        # CJK/Latin text and keeps a small safety margin.
-        _estimated_input_tokens = len(combined_prompt) // 3
-        _max_output = max(pipeline.page_loader.max_tokens - _estimated_input_tokens, 512)
         req = {
             "messages": [
                 {
@@ -525,7 +519,6 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                     "content": combined_prompt,
                 }
             ],
-            "max_tokens": _max_output,
             "temperature": 0.1,
             "top_p": pipeline.page_loader.top_p,
             "top_k": pipeline.page_loader.top_k,
@@ -590,10 +583,6 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             combined_prompt = (
                 f"以下是文档内容:\n\n{full_markdown}\n\n{extraction_prompt}"
             )
-            _estimated_input_tokens = len(combined_prompt) // 3
-            _max_output = max(
-                pipeline.page_loader.max_tokens - _estimated_input_tokens, 512
-            )
             req = {
                 "messages": [
                     {
@@ -601,7 +590,6 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                         "content": combined_prompt,
                     }
                 ],
-                "max_tokens": _max_output,
                 "temperature": 0.1,
                 "top_p": pipeline.page_loader.top_p,
                 "top_k": pipeline.page_loader.top_k,
