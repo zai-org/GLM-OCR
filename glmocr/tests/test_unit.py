@@ -1,6 +1,7 @@
 """Unit tests for glmocr (no external services required)."""
 
 import json
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +24,14 @@ class TestConfig:
 
         cfg = load_config().to_dict()
         assert isinstance(cfg, dict)
+
+    def test_default_config_routes_number_to_text_ocr(self):
+        """Default SDK config preserves PP-DocLayoutV3 number regions for OCR."""
+        from glmocr.config import load_config
+
+        cfg = load_config()
+        text_labels = cfg.pipeline.layout.label_task_mapping["text"]
+        assert "number" in text_labels
 
 
 class TestLayoutDeviceUnit:
@@ -494,6 +503,164 @@ class TestResultFormatter:
         cleaned = formatter._clean_content("Hello....World")
         assert "....." not in cleaned
 
+    def test_result_formatter_feature_off_keeps_json_result_lean(self):
+        """Feature disabled does not leak broad layout metadata into json_result."""
+        from glmocr.postprocess import ResultFormatter
+        from glmocr.config import ResultFormatterConfig
+
+        formatter = ResultFormatter(ResultFormatterConfig())
+        grouped_results = [
+            [
+                {
+                    "index": 7,
+                    "label": "number",
+                    "content": "12",
+                    "bbox_2d": [944, 12, 972, 42],
+                    "score": 0.88,
+                }
+            ]
+        ]
+
+        parsed = json.loads(formatter.process(grouped_results)[0])
+        assert parsed[0][0]["native_label"] == "number"
+        assert "layout_index" not in parsed[0][0]
+        assert "layout_score" not in parsed[0][0]
+
+    def test_result_formatter_extracts_page_number_data(self):
+        """Formatter extracts printed page data from number blocks."""
+        from glmocr.postprocess import ResultFormatter
+        from glmocr.config import ResultFormatterConfig
+
+        formatter = ResultFormatter(
+            ResultFormatterConfig(detect_printed_page_numbers=True)
+        )
+        grouped_results = [
+            [
+                {
+                    "index": 7,
+                    "label": "number",
+                    "content": "12",
+                    "bbox_2d": [944, 12, 972, 42],
+                    "score": 0.88,
+                }
+            ]
+        ]
+
+        formatter.process(grouped_results)
+
+        assert formatter.page_number_candidates[0]["layout_index"] == 7
+        assert formatter.page_number_candidates[0]["layout_score"] == 0.88
+        assert formatter.page_metadata == [
+            {
+                "page_index": 0,
+                "printed_page_label": "12",
+                "printed_page_block_index": 7,
+                "printed_page_bbox_2d": [944, 12, 972, 42],
+                "printed_page_confidence": 0.88,
+            }
+        ]
+        assert formatter.page_number_candidates == [
+            {
+                "page_index": 0,
+                "label": "number",
+                "content": "12",
+                "layout_index": 7,
+                "bbox_2d": [944, 12, 972, 42],
+                "layout_score": 0.88,
+                "numeric_like": True,
+                "roman_like": False,
+            }
+        ]
+        assert formatter.document_page_numbering == {
+            "strategy": "visual_sequence",
+            "confidence": 1.0,
+            "sequence_type": "arabic",
+            "page_offset": 12,
+            "candidate_pages": 1,
+        }
+
+    def test_result_formatter_ignores_non_margin_number_blocks(self):
+        """Formatter ignores number blocks that are not in page margins."""
+        from glmocr.postprocess import ResultFormatter
+        from glmocr.config import ResultFormatterConfig
+
+        formatter = ResultFormatter(
+            ResultFormatterConfig(detect_printed_page_numbers=True)
+        )
+        grouped_results = [
+            [
+                {
+                    "index": 7,
+                    "label": "number",
+                    "content": "12",
+                    "bbox_2d": [400, 400, 428, 430],
+                    "score": 0.88,
+                }
+            ]
+        ]
+
+        formatter.process(grouped_results)
+
+        parsed = json.loads(formatter.process(grouped_results)[0])
+        assert "layout_index" not in parsed[0][0]
+        assert "layout_score" not in parsed[0][0]
+        assert formatter.page_metadata == []
+        assert formatter.page_number_candidates == []
+        assert formatter.document_page_numbering is None
+
+    def test_result_formatter_accepts_roman_number_candidates(self):
+        """Formatter preserves Roman numeral number candidates."""
+        from glmocr.postprocess import ResultFormatter
+        from glmocr.config import ResultFormatterConfig
+
+        formatter = ResultFormatter(
+            ResultFormatterConfig(detect_printed_page_numbers=True)
+        )
+        grouped_results = [
+            [
+                {
+                    "index": 7,
+                    "label": "number",
+                    "content": "iv",
+                    "bbox_2d": [944, 12, 972, 42],
+                    "score": 0.75,
+                }
+            ]
+        ]
+
+        formatter.process(grouped_results)
+
+        assert formatter.page_number_candidates[0]["layout_index"] == 7
+        assert formatter.page_number_candidates[0]["layout_score"] == 0.75
+        assert formatter.page_metadata == [
+            {
+                "page_index": 0,
+                "printed_page_label": "iv",
+                "printed_page_block_index": 7,
+                "printed_page_bbox_2d": [944, 12, 972, 42],
+                "printed_page_confidence": 0.75,
+            }
+        ]
+        assert formatter.page_number_candidates == [
+            {
+                "page_index": 0,
+                "label": "number",
+                "content": "iv",
+                "layout_index": 7,
+                "bbox_2d": [944, 12, 972, 42],
+                "layout_score": 0.75,
+                "numeric_like": False,
+                "roman_like": True,
+            }
+        ]
+        assert formatter.document_page_numbering == {
+            "strategy": "visual_sequence",
+            "confidence": 1.0,
+            "sequence_type": "roman",
+            "page_offset": None,
+            "candidate_pages": 1,
+        }
+
 
 class TestMaaSClient:
     """Tests for MaaSClient."""
@@ -845,6 +1012,17 @@ class TestCollectEnvOverrides:
 
         assert _collect_env_overrides() == {}
 
+    def test_detect_printed_page_numbers_env_var(self, monkeypatch):
+        """Printed page detection can be enabled via environment variable."""
+        from glmocr.config import _collect_env_overrides
+
+        monkeypatch.setenv("GLMOCR_DETECT_PRINTED_PAGE_NUMBERS", "true")
+        overrides = _collect_env_overrides()
+        assert (
+            overrides["pipeline"]["result_formatter"]["detect_printed_page_numbers"]
+            is True
+        )
+
 
 class TestFromEnv:
     """Tests for GlmOcrConfig.from_env() – full priority chain."""
@@ -980,6 +1158,107 @@ class TestBaseParserResultSerialization:
         s = r.to_json()
         # ensure_ascii=False by default → raw CJK characters
         assert "中文测试" in s
+
+    def test_to_dict_includes_printed_page_fields(self):
+        r = self._make_result(
+            page_metadata=[
+                {
+                    "page_index": 0,
+                    "printed_page_label": "12",
+                    "printed_page_block_index": 7,
+                    "printed_page_bbox_2d": [944, 12, 972, 42],
+                    "printed_page_confidence": 0.88,
+                }
+            ],
+            page_number_candidates=[
+                {
+                    "page_index": 0,
+                    "label": "number",
+                    "content": "12",
+                    "layout_index": 7,
+                    "bbox_2d": [944, 12, 972, 42],
+                    "layout_score": 0.88,
+                    "numeric_like": True,
+                    "roman_like": False,
+                }
+            ],
+            document_page_numbering={
+                "strategy": "visual_sequence",
+                "confidence": 1.0,
+                "sequence_type": "arabic",
+                "page_offset": 12,
+                "candidate_pages": 1,
+            },
+        )
+        d = r.to_dict()
+        assert d["page_metadata"][0]["printed_page_label"] == "12"
+        assert d["page_number_candidates"][0]["label"] == "number"
+        assert d["document_page_numbering"]["page_offset"] == 12
+
+    def test_save_wraps_json_with_printed_page_fields(self):
+        r = self._make_result(
+            original_images=["paper.pdf"],
+            page_metadata=[
+                {
+                    "page_index": 0,
+                    "printed_page_label": "12",
+                    "printed_page_block_index": 7,
+                    "printed_page_bbox_2d": [944, 12, 972, 42],
+                    "printed_page_confidence": 0.88,
+                }
+            ],
+            page_number_candidates=[
+                {
+                    "page_index": 0,
+                    "label": "number",
+                    "content": "12",
+                    "layout_index": 7,
+                    "bbox_2d": [944, 12, 972, 42],
+                    "layout_score": 0.88,
+                    "numeric_like": True,
+                    "roman_like": False,
+                }
+            ],
+            document_page_numbering={
+                "strategy": "visual_sequence",
+                "confidence": 1.0,
+                "sequence_type": "arabic",
+                "page_offset": 12,
+                "candidate_pages": 1,
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            r.save(output_dir=tmp_dir, save_layout_visualization=False)
+            saved = json.loads(Path(tmp_dir, "paper", "paper.json").read_text("utf-8"))
+
+        assert "json_result" in saved
+        assert saved["page_metadata"][0]["printed_page_label"] == "12"
+        assert saved["page_number_candidates"][0]["label"] == "number"
+        assert saved["document_page_numbering"]["page_offset"] == 12
+
+    def test_save_keeps_legacy_json_shape_without_printed_page_data(self):
+        r = self._make_result(original_images=["paper.pdf"])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            r.save(output_dir=tmp_dir, save_layout_visualization=False)
+            saved = json.loads(Path(tmp_dir, "paper", "paper.json").read_text("utf-8"))
+
+        assert isinstance(saved, list)
+
+    def test_save_keeps_legacy_json_shape_when_detection_has_no_hits(self):
+        r = self._make_result(
+            original_images=["paper.pdf"],
+            page_metadata=[],
+            page_number_candidates=[],
+            document_page_numbering=None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            r.save(output_dir=tmp_dir, save_layout_visualization=False)
+            saved = json.loads(Path(tmp_dir, "paper", "paper.json").read_text("utf-8"))
+
+        assert isinstance(saved, list)
 
     def test_repr(self):
         r = self._make_result()
@@ -1251,6 +1530,93 @@ class TestGlmOcrParseStream:
             preserve_order=True,
         )
 
+    def test_maas_response_includes_printed_page_metadata_when_enabled(self):
+        """MaaS conversion derives printed page data from number blocks."""
+        from glmocr.api import GlmOcr
+        from glmocr.config import GlmOcrConfig, ResultFormatterConfig
+
+        parser = object.__new__(GlmOcr)
+        parser._use_maas = True
+        parser._pipeline = None
+        parser._maas_client = MagicMock()
+        parser.config_model = GlmOcrConfig()
+        parser.config_model.pipeline.result_formatter = ResultFormatterConfig(
+            detect_printed_page_numbers=True
+        )
+
+        response = {
+            "md_results": "",
+            "layout_details": [
+                [
+                    {
+                        "index": 7,
+                        "label": "number",
+                        "content": "12",
+                        "bbox_2d": [1926, 32, 1982, 111],
+                        "score": 0.88,
+                    }
+                ]
+            ],
+            "data_info": {"pages": [{"width": 2040, "height": 2640}]},
+        }
+
+        result = parser._maas_response_to_pipeline_result(response, "paper.pdf")
+
+        assert result.page_number_candidates == [
+            {
+                "page_index": 0,
+                "label": "number",
+                "content": "12",
+                "layout_index": 7,
+                "bbox_2d": [944, 12, 972, 42],
+                "layout_score": 0.88,
+                "numeric_like": True,
+                "roman_like": False,
+            }
+        ]
+        assert result.document_page_numbering == {
+            "strategy": "visual_sequence",
+            "confidence": 1.0,
+            "sequence_type": "arabic",
+            "page_offset": 12,
+            "candidate_pages": 1,
+        }
+        assert result.page_metadata[0]["printed_page_label"] == "12"
+
+    def test_maas_response_feature_off_keeps_json_result_lean(self):
+        """MaaS conversion does not leak broad layout metadata when feature is off."""
+        from glmocr.api import GlmOcr
+        from glmocr.config import GlmOcrConfig
+
+        parser = object.__new__(GlmOcr)
+        parser._use_maas = True
+        parser._pipeline = None
+        parser._maas_client = MagicMock()
+        parser.config_model = GlmOcrConfig()
+
+        response = {
+            "md_results": "",
+            "layout_details": [
+                [
+                    {
+                        "index": 7,
+                        "label": "number",
+                        "content": "12",
+                        "bbox_2d": [1926, 32, 1982, 111],
+                        "score": 0.88,
+                    }
+                ]
+            ],
+            "data_info": {"pages": [{"width": 2040, "height": 2640}]},
+        }
+
+        result = parser._maas_response_to_pipeline_result(response, "paper.pdf")
+
+        block = result.json_result[0][0]
+        assert block["native_label"] == "number"
+        assert "layout_index" not in block
+        assert "layout_score" not in block
+
 
 class TestGlmOcrConstructor:
     """Tests for GlmOcr.__init__ kwarg handling (config assembly only)."""
@@ -1306,6 +1672,25 @@ class TestGlmOcrConstructor:
             parser = GlmOcr(mode="selfhosted", model="glm-ocr")
             assert parser._use_maas is False
             assert parser.config_model.pipeline.ocr_api.model == "glm-ocr"
+            parser.close()
+
+    def test_detect_printed_page_numbers_kwarg_is_forwarded(self, monkeypatch):
+        """Public constructor flag enables printed page detection in config."""
+        from glmocr.config import _ENV_MAP, ENV_PREFIX
+
+        for suffix in _ENV_MAP:
+            monkeypatch.delenv(f"{ENV_PREFIX}{suffix}", raising=False)
+        monkeypatch.setattr("glmocr.config._find_dotenv", lambda: None)
+
+        with patch("glmocr.maas_client.MaaSClient") as mock_maas:
+            mock_maas.return_value.start = MagicMock()
+            from glmocr.api import GlmOcr
+
+            parser = GlmOcr(api_key="sk-test", detect_printed_page_numbers=True)
+            assert (
+                parser.config_model.pipeline.result_formatter.detect_printed_page_numbers
+                is True
+            )
             parser.close()
 
 

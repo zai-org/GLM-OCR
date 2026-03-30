@@ -12,10 +12,11 @@ Applies to:
 
 from __future__ import annotations
 
+import collections
 import re
 import json
 from copy import deepcopy
-from typing import TYPE_CHECKING, List, Dict, Tuple, Any
+from typing import TYPE_CHECKING, List, Dict, Tuple, Any, Optional
 
 try:  # Optional dependency for better English word validation quality.
     from wordfreq import zipf_frequency
@@ -70,6 +71,10 @@ class ResultFormatter(BasePostProcessor):
         self.enable_merge_formula_numbers = config.enable_merge_formula_numbers
         self.enable_merge_text_blocks = config.enable_merge_text_blocks
         self.enable_format_bullet_points = config.enable_format_bullet_points
+        self.detect_printed_page_numbers = config.detect_printed_page_numbers
+        self.page_metadata: Optional[List[Dict[str, Any]]] = None
+        self.page_number_candidates: Optional[List[Dict[str, Any]]] = None
+        self.document_page_numbering: Optional[Dict[str, Any]] = None
 
     # =========================================================================
     # OCR-only mode
@@ -160,6 +165,10 @@ class ResultFormatter(BasePostProcessor):
             (json_str, markdown_str, image_files) where *image_files* maps
             ``filename`` → PIL Image for the caller to persist.
         """
+        self.page_metadata = None
+        self.page_number_candidates = None
+        self.document_page_numbering = None
+
         json_final_results = []
 
         with profiler.measure("format_regions"):
@@ -173,6 +182,12 @@ class ResultFormatter(BasePostProcessor):
 
                 for item in sorted_results:
                     result = deepcopy(item)
+                    result["layout_index"] = result.get(
+                        "layout_index", result.get("index", 0)
+                    )
+                    result["layout_score"] = float(
+                        result.get("layout_score", result.get("score") or 0.0)
+                    )
                     result["native_label"] = result.get("label", "text")
 
                     # Map labels
@@ -215,6 +230,15 @@ class ResultFormatter(BasePostProcessor):
 
                 json_final_results.append(json_page_results)
 
+        if self.detect_printed_page_numbers:
+            (
+                self.page_number_candidates,
+                self.document_page_numbering,
+                self.page_metadata,
+            ) = self.extract_printed_page_data(json_final_results)
+
+        self._strip_layout_metadata(json_final_results)
+
         # Generate markdown results and resolve image regions
         image_files: Dict[str, Any] = {}
         image_counter = 0
@@ -250,6 +274,190 @@ class ResultFormatter(BasePostProcessor):
         markdown_str = "\n\n".join(markdown_final_results)
 
         return json_str, markdown_str, image_files
+
+    def extract_printed_page_data(
+        self,
+        pages: List[List[Dict[str, Any]]],
+    ) -> Tuple[
+        List[Dict[str, Any]],
+        Optional[Dict[str, Any]],
+        List[Dict[str, Any]],
+    ]:
+        """Extract number candidates and derived printed page metadata."""
+        candidates = self._extract_page_number_candidates(pages)
+        document_page_numbering = self._infer_document_page_numbering(candidates)
+        page_metadata = self._build_printed_page_metadata(candidates)
+        return candidates, document_page_numbering, page_metadata
+
+    def _extract_page_number_candidates(
+        self,
+        pages: List[List[Dict[str, Any]]],
+    ) -> List[Dict[str, Any]]:
+        """Extract raw `number` candidates for printed page inference."""
+        candidates: List[Dict[str, Any]] = []
+        for page_index, page_blocks in enumerate(pages):
+            for block in page_blocks:
+                candidate = self._build_page_number_candidate(page_index, block)
+                if candidate is not None:
+                    candidates.append(candidate)
+        return candidates
+
+    def _build_page_number_candidate(
+        self,
+        page_index: int,
+        block: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Build a normalized page-number candidate from one layout block."""
+        if block.get("native_label") != "number":
+            return None
+
+        bbox = block.get("bbox_2d")
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            return None
+
+        label = self._normalize_printed_page_label(block.get("content"))
+        if label is None:
+            return None
+
+        x1, y1, x2, y2 = bbox
+        width = x2 - x1
+        height = y2 - y1
+        if width <= 0 or height <= 0 or width > 140 or height > 120:
+            return None
+        if not self._is_margin_candidate(x1, y1, x2, y2):
+            return None
+
+        return {
+            "page_index": page_index,
+            "label": "number",
+            "content": label,
+            "layout_index": block.get("layout_index", block.get("index", 0)),
+            "bbox_2d": bbox,
+            "layout_score": float(block.get("layout_score") or 0.0),
+            "numeric_like": label.isdigit(),
+            "roman_like": self._is_roman_like(label),
+        }
+
+    @staticmethod
+    def _is_margin_candidate(x1: int, y1: int, x2: int, y2: int) -> bool:
+        """Return whether a candidate lies in a plausible page-margin folio area."""
+        in_margin_band = y1 <= 120 or y2 >= 880
+        in_outer_margin = x1 <= 180 or x2 >= 820
+        return in_margin_band and in_outer_margin
+
+    @staticmethod
+    def _is_roman_like(content: str) -> bool:
+        """Check whether a label looks like a Roman numeral folio."""
+        return bool(re.fullmatch(r"(?i)[ivxlcdm]+", content))
+
+    def _infer_document_page_numbering(
+        self,
+        candidates: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Infer document-level numbering from number-only candidates."""
+        if not candidates:
+            return None
+
+        best_candidates = self._best_candidates_by_page(candidates)
+        page_count = len(best_candidates)
+        numeric_candidates = [c for c in best_candidates if c["numeric_like"]]
+        roman_candidates = [c for c in best_candidates if c["roman_like"]]
+
+        if numeric_candidates:
+            offsets = collections.Counter(
+                int(c["content"]) - int(c["page_index"]) for c in numeric_candidates
+            )
+            page_offset, support = offsets.most_common(1)[0]
+            return {
+                "strategy": "visual_sequence",
+                "confidence": round(support / max(1, page_count), 3),
+                "sequence_type": "arabic",
+                "page_offset": page_offset,
+                "candidate_pages": page_count,
+            }
+
+        if roman_candidates:
+            return {
+                "strategy": "visual_sequence",
+                "confidence": round(len(roman_candidates) / max(1, page_count), 3),
+                "sequence_type": "roman",
+                "page_offset": None,
+                "candidate_pages": len(roman_candidates),
+            }
+
+        return None
+
+    def _build_printed_page_metadata(
+        self,
+        candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Build per-page printed page metadata from selected candidates."""
+        if not candidates:
+            return []
+
+        metadata: List[Dict[str, Any]] = []
+        for candidate in self._best_candidates_by_page(candidates):
+            metadata.append(
+                {
+                    "page_index": candidate["page_index"],
+                    "printed_page_label": candidate["content"],
+                    "printed_page_block_index": candidate["layout_index"],
+                    "printed_page_bbox_2d": candidate["bbox_2d"],
+                    "printed_page_confidence": candidate["layout_score"],
+                }
+            )
+        return metadata
+
+    def _best_candidates_by_page(
+        self,
+        candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Select the strongest candidate per page."""
+        by_page: Dict[int, List[Dict[str, Any]]] = collections.defaultdict(list)
+        for candidate in candidates:
+            by_page[int(candidate["page_index"])].append(candidate)
+        return [
+            min(by_page[page_index], key=self._candidate_sort_key)
+            for page_index in sorted(by_page)
+        ]
+
+    @staticmethod
+    def _candidate_sort_key(block: Dict[str, Any]) -> tuple[int, int, int, int]:
+        """Prefer blocks nearest to outer top/bottom page margins."""
+        bbox = block.get("bbox_2d") or [0, 0, 1000, 1000]
+        x1, y1, x2, y2 = bbox
+        top_distance = y1
+        bottom_distance = 1000 - y2
+        edge_distance = min(top_distance, bottom_distance)
+        side_distance = min(x1, 1000 - x2)
+        return (
+            edge_distance,
+            side_distance,
+            -int(block.get("layout_score", 0) * 1000),
+            int(block.get("layout_index", block.get("index", 0))),
+        )
+
+    @staticmethod
+    def _normalize_printed_page_label(content: Any) -> Optional[str]:
+        """Normalize OCR text from a printed page-number candidate."""
+        if not isinstance(content, str):
+            return None
+        label = content.strip()
+        if not label or len(label) > 12:
+            return None
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9\-./]*", label):
+            return None
+        if not (re.search(r"\d", label) or ResultFormatter._is_roman_like(label)):
+            return None
+        return label
+
+    @staticmethod
+    def _strip_layout_metadata(pages: List[List[Dict[str, Any]]]) -> None:
+        """Remove broad layout-only metadata from final JSON blocks."""
+        for page in pages:
+            for block in page:
+                block.pop("layout_index", None)
+                block.pop("layout_score", None)
 
     # =========================================================================
     # Content handling

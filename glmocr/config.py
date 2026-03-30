@@ -48,6 +48,8 @@ _ENV_MAP: Dict[str, str] = {
     "LAYOUT_CUDA_VISIBLE_DEVICES": "pipeline.layout.cuda_visible_devices",
     # Explicit device for layout model: "cpu", "cuda", "cuda:0", etc.
     "LAYOUT_DEVICE": "pipeline.layout.device",
+    # Result formatter
+    "DETECT_PRINTED_PAGE_NUMBERS": "pipeline.result_formatter.detect_printed_page_numbers",
     # Logging
     "LOG_LEVEL": "logging.level",
 }
@@ -175,6 +177,7 @@ class ResultFormatterConfig(_BaseConfig):
     enable_merge_formula_numbers: bool = True
     enable_merge_text_blocks: bool = True
     enable_format_bullet_points: bool = True
+    detect_printed_page_numbers: bool = False
     label_visualization_mapping: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -260,6 +263,8 @@ def _coerce_env_value(dotted_path: str, raw: str) -> Any:
     # Boolean fields
     if dotted_path == "pipeline.maas.enabled":
         return raw.strip().lower() in ("maas", "true", "1", "yes")
+    if dotted_path == "pipeline.result_formatter.detect_printed_page_numbers":
+        return raw.strip().lower() in ("true", "1", "yes", "on")
     # Integer fields
     if dotted_path.endswith((".api_port", ".request_timeout", ".connect_timeout")):
         return int(raw)
@@ -429,6 +434,7 @@ class GlmOcrConfig(_BaseConfig):
             "mode": "pipeline.maas.enabled",
             "timeout": "pipeline.maas.request_timeout",
             "log_level": "logging.level",
+            "detect_printed_page_numbers": "pipeline.result_formatter.detect_printed_page_numbers",
             # Self-hosted OCR API
             "ocr_api_host": "pipeline.ocr_api.api_host",
             "ocr_api_port": "pipeline.ocr_api.api_port",

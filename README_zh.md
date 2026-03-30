@@ -214,6 +214,11 @@ with GlmOcr() as parser:
     result = parser.parse("image.png")
     print(result.json_result)
     result.save()
+
+# 从 PP-DocLayoutV3 的 `number` 区域提取印刷页码
+with GlmOcr(detect_printed_page_numbers=True) as parser:
+    result = parser.parse("document.pdf")
+    print(result.to_dict().get("page_metadata", []))
 ```
 
 #### Flask 服务
@@ -287,9 +292,27 @@ pipeline:
   # Result formatting
   result_formatter:
     output_format: both # json, markdown, or both
+    detect_printed_page_numbers: false
 ```
 
 更多选项请参考 [config.yaml](glmocr/config.yaml)。
+
+印刷页码检测支持以下三种启用方式：
+
+```python
+with GlmOcr(detect_printed_page_numbers=True) as parser:
+    result = parser.parse("document.pdf")
+```
+
+```powershell
+$env:GLMOCR_DETECT_PRINTED_PAGE_NUMBERS = 'true'
+```
+
+```yaml
+pipeline:
+  result_formatter:
+    detect_printed_page_numbers: true
+```
 
 ### 输出格式
 
@@ -299,6 +322,42 @@ pipeline:
 
 ```json
 [[{ "index": 0, "label": "text", "content": "...", "bbox_2d": null }]]
+```
+
+启用印刷页码检测且实际检测到印刷页码数据时，保存的 `paper.json` 会变成顶层对象，并包含：
+
+```json
+{
+  "json_result": [[{ "index": 0, "label": "text", "content": "...", "bbox_2d": null }]],
+  "page_number_candidates": [
+    {
+      "page_index": 1,
+      "label": "number",
+      "content": "22",
+      "layout_index": 0,
+      "bbox_2d": [92, 26, 120, 41],
+      "layout_score": 0.77,
+      "numeric_like": true,
+      "roman_like": false
+    }
+  ],
+  "document_page_numbering": {
+    "strategy": "visual_sequence",
+    "confidence": 1.0,
+    "sequence_type": "arabic",
+    "page_offset": 21,
+    "candidate_pages": 4
+  },
+  "page_metadata": [
+    {
+      "page_index": 1,
+      "printed_page_label": "22",
+      "printed_page_block_index": 0,
+      "printed_page_bbox_2d": [92, 26, 120, 41],
+      "printed_page_confidence": 0.77
+    }
+  ]
+}
 ```
 
 - Markdown

@@ -362,6 +362,9 @@ class Pipeline:
                 grouped,
                 cropped_images=cropped_images or None,
             )
+            page_metadata = self.result_formatter.page_metadata
+            page_number_candidates = self.result_formatter.page_number_candidates
+            document_page_numbering = self.result_formatter.document_page_numbering
 
             vis_images = {}
             for pi in page_indices:
@@ -378,6 +381,9 @@ class Pipeline:
                 image_files=image_files or None,
                 raw_json_result=raw_json,
                 layout_vis_images=vis_images or None,
+                page_metadata=page_metadata,
+                page_number_candidates=page_number_candidates,
+                document_page_numbering=document_page_numbering,
             )
             built.add(u)
             if preserve_order:

@@ -84,6 +84,7 @@ class GlmOcr:
         ocr_api_port: Optional[int] = None,
         cuda_visible_devices: Optional[str] = None,
         layout_device: Optional[str] = None,
+        detect_printed_page_numbers: Optional[bool] = None,
         **kwargs: Any,
     ):
         """Initialize GlmOcr.
@@ -130,6 +131,7 @@ class GlmOcr:
             ocr_api_port=ocr_api_port,
             cuda_visible_devices=cuda_visible_devices,
             layout_device=layout_device,
+            detect_printed_page_numbers=detect_printed_page_numbers,
             **kwargs,
         )
         # Apply logging config for API/SDK usage.
@@ -441,8 +443,11 @@ class GlmOcr:
                     {
                         "index": region.get("index", 0),
                         "label": region.get("label", "text"),
+                        "native_label": region.get("label", "text"),
                         "content": region.get("content", ""),
                         "bbox_2d": bbox,
+                        "layout_index": region.get("index", 0),
+                        "layout_score": float(region.get("score") or 0.0),
                     }
                 )
             json_result.append(page_result)
@@ -460,12 +465,32 @@ class GlmOcr:
             source,
         )
 
+        page_metadata = None
+        page_number_candidates = None
+        document_page_numbering = None
+        if self.config_model.pipeline.result_formatter.detect_printed_page_numbers:
+            from glmocr.postprocess import ResultFormatter
+
+            formatter = ResultFormatter(self.config_model.pipeline.result_formatter)
+            (
+                page_number_candidates,
+                document_page_numbering,
+                page_metadata,
+            ) = formatter.extract_printed_page_data(json_result)
+
+        from glmocr.postprocess import ResultFormatter
+
+        ResultFormatter._strip_layout_metadata(json_result)
+
         # Create PipelineResult
         result = PipelineResult(
             json_result=json_result,
             markdown_result=markdown_result,
             original_images=[source],
             image_files=image_files or None,
+            page_metadata=page_metadata,
+            page_number_candidates=page_number_candidates,
+            document_page_numbering=document_page_numbering,
         )
 
         # Store additional MaaS response data

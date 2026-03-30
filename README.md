@@ -222,6 +222,11 @@ with GlmOcr() as parser:
     print(result.json_result)
     result.save()
 
+# Extract printed page numbers from PP-DocLayoutV3 `number` regions
+with GlmOcr(detect_printed_page_numbers=True) as parser:
+    result = parser.parse("document.pdf")
+    print(result.to_dict().get("page_metadata", []))
+
 # Place layout model on CPU (useful when GPU is reserved for OCR)
 with GlmOcr(layout_device="cpu") as parser:
     result = parser.parse("image.png")
@@ -302,6 +307,7 @@ pipeline:
   # Result formatting
   result_formatter:
     output_format: both # json, markdown, or both
+    detect_printed_page_numbers: false
 
   # Layout model device placement
   layout:
@@ -309,6 +315,23 @@ pipeline:
 ```
 
 See [config.yaml](glmocr/config.yaml) for all options.
+
+Printed page number detection can be enabled in three ways:
+
+```python
+with GlmOcr(detect_printed_page_numbers=True) as parser:
+    result = parser.parse("document.pdf")
+```
+
+```powershell
+$env:GLMOCR_DETECT_PRINTED_PAGE_NUMBERS = 'true'
+```
+
+```yaml
+pipeline:
+  result_formatter:
+    detect_printed_page_numbers: true
+```
 
 ### Output Formats
 
@@ -318,6 +341,43 @@ Here are two examples of output formats:
 
 ```json
 [[{ "index": 0, "label": "text", "content": "...", "bbox_2d": null }]]
+```
+
+When printed page detection is enabled and printed-page data is actually found,
+saved `paper.json` is wrapped as a top-level object and includes:
+
+```json
+{
+  "json_result": [[{ "index": 0, "label": "text", "content": "...", "bbox_2d": null }]],
+  "page_number_candidates": [
+    {
+      "page_index": 1,
+      "label": "number",
+      "content": "22",
+      "layout_index": 0,
+      "bbox_2d": [92, 26, 120, 41],
+      "layout_score": 0.77,
+      "numeric_like": true,
+      "roman_like": false
+    }
+  ],
+  "document_page_numbering": {
+    "strategy": "visual_sequence",
+    "confidence": 1.0,
+    "sequence_type": "arabic",
+    "page_offset": 21,
+    "candidate_pages": 4
+  },
+  "page_metadata": [
+    {
+      "page_index": 1,
+      "printed_page_label": "22",
+      "printed_page_block_index": 0,
+      "printed_page_bbox_2d": [92, 26, 120, 41],
+      "printed_page_confidence": 0.77
+    }
+  ]
+}
 ```
 
 - Markdown
