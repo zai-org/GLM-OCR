@@ -164,6 +164,7 @@ pipeline:
         - content
         - doc_title
         - figure_title
+        - number
         - paragraph_title
         - reference_content
         - text
@@ -256,6 +257,7 @@ pipeline:
         - content
         - doc_title
         - figure_title
+        - number
         - paragraph_title
         - reference_content
         - text
@@ -274,7 +276,6 @@ pipeline:
       abandon:
         - header
         - footer
-        - number
         - footnote
         - aside_text
         - reference

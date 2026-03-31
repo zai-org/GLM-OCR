@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, Optional, Union, List, Literal
 
 import yaml
 from dotenv import dotenv_values
@@ -48,6 +48,13 @@ _ENV_MAP: Dict[str, str] = {
     "LAYOUT_CUDA_VISIBLE_DEVICES": "pipeline.layout.cuda_visible_devices",
     # Explicit device for layout model: "cpu", "cuda", "cuda:0", etc.
     "LAYOUT_DEVICE": "pipeline.layout.device",
+    # Result formatter
+    "DETECT_PRINTED_PAGE_NUMBERS": "pipeline.result_formatter.detect_printed_page_numbers",
+    "ENABLE_IMAGE_ASSET_EXPORT": "pipeline.result_formatter.enable_image_asset_export",
+    "MARKDOWN_IMAGE_PREFERENCE": "pipeline.result_formatter.markdown_image_preference",
+    "IMAGE_MATCH_IOU_THRESHOLD": "pipeline.result_formatter.image_match_iou_threshold",
+    "IMAGE_MATCH_CONTAINMENT_THRESHOLD": "pipeline.result_formatter.image_match_containment_threshold",
+    "RENDERED_IMAGE_DPI": "pipeline.result_formatter.rendered_image_dpi",
     # Logging
     "LOG_LEVEL": "logging.level",
 }
@@ -175,7 +182,24 @@ class ResultFormatterConfig(_BaseConfig):
     enable_merge_formula_numbers: bool = True
     enable_merge_text_blocks: bool = True
     enable_format_bullet_points: bool = True
+    detect_printed_page_numbers: bool = False
+    enable_image_asset_export: bool = False
+    markdown_image_preference: Literal["embedded", "rendered"] = "embedded"
+    image_match_iou_threshold: float = 0.5
+    image_match_containment_threshold: float = 0.8
+    rendered_image_dpi: int = 300
     label_visualization_mapping: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("markdown_image_preference")
+    @classmethod
+    def _validate_markdown_image_preference(
+        cls, value: str
+    ) -> Literal["embedded", "rendered"]:
+        if value not in ("embedded", "rendered"):
+            raise ValueError(
+                "markdown_image_preference must be 'embedded' or 'rendered'"
+            )
+        return value
 
 
 class LayoutConfig(_BaseConfig):
@@ -260,9 +284,22 @@ def _coerce_env_value(dotted_path: str, raw: str) -> Any:
     # Boolean fields
     if dotted_path == "pipeline.maas.enabled":
         return raw.strip().lower() in ("maas", "true", "1", "yes")
+    if dotted_path == "pipeline.result_formatter.detect_printed_page_numbers":
+        return raw.strip().lower() in ("true", "1", "yes", "on")
+    if dotted_path == "pipeline.result_formatter.enable_image_asset_export":
+        return raw.strip().lower() in ("true", "1", "yes", "on")
     # Integer fields
     if dotted_path.endswith((".api_port", ".request_timeout", ".connect_timeout")):
         return int(raw)
+    if dotted_path == "pipeline.result_formatter.rendered_image_dpi":
+        return int(raw)
+    if dotted_path.endswith(
+        (
+            ".image_match_iou_threshold",
+            ".image_match_containment_threshold",
+        )
+    ):
+        return float(raw)
     return raw
 
 
@@ -429,6 +466,12 @@ class GlmOcrConfig(_BaseConfig):
             "mode": "pipeline.maas.enabled",
             "timeout": "pipeline.maas.request_timeout",
             "log_level": "logging.level",
+            "detect_printed_page_numbers": "pipeline.result_formatter.detect_printed_page_numbers",
+            "enable_image_asset_export": "pipeline.result_formatter.enable_image_asset_export",
+            "markdown_image_preference": "pipeline.result_formatter.markdown_image_preference",
+            "image_match_iou_threshold": "pipeline.result_formatter.image_match_iou_threshold",
+            "image_match_containment_threshold": "pipeline.result_formatter.image_match_containment_threshold",
+            "rendered_image_dpi": "pipeline.result_formatter.rendered_image_dpi",
             # Self-hosted OCR API
             "ocr_api_host": "pipeline.ocr_api.api_host",
             "ocr_api_port": "pipeline.ocr_api.api_port",
