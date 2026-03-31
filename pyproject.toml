@@ -44,6 +44,7 @@ layout = [
   "transformers>=5.3.0",
   "sentencepiece>=0.2.0",
   "accelerate>=1.13.0",
+  "opencv-python>=4.8.0",
 ]
 
 server = [
@@ -57,6 +58,7 @@ selfhosted = [
   "transformers>=5.3.0",
   "sentencepiece>=0.2.0",
   "accelerate>=1.13.0",
+  "opencv-python>=4.8.0",
   "pypdfium2>=5.6.0",
 ]
 
@@ -67,6 +69,7 @@ all = [
   "transformers>=5.3.0",
   "sentencepiece>=0.2.0",
   "accelerate>=1.13.0",
+  "opencv-python>=4.8.0",
   "pypdfium2>=5.6.0",
   "flask>=3.1.0",
 ]
