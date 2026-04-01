@@ -26,6 +26,9 @@ class PipelineResult(BaseParserResult):
         image_files: Optional[dict] = None,
         raw_json_result: Optional[list] = None,
         layout_vis_images: Optional[Dict[int, Any]] = None,
+        page_metadata: Optional[List[Dict[str, Any]]] = None,
+        page_number_candidates: Optional[List[Dict[str, Any]]] = None,
+        document_page_numbering: Optional[Dict[str, Any]] = None,
     ):
         """Initialize.
 
@@ -38,6 +41,9 @@ class PipelineResult(BaseParserResult):
             raw_json_result: Raw model output before post-processing (optional).
             layout_vis_images: Mapping of ``page_idx`` → PIL Image for layout
                 visualization; saved to ``layout_vis/`` during :meth:`save`.
+            page_metadata: Derived per-page printed page metadata.
+            page_number_candidates: Raw printed page-number candidates.
+            document_page_numbering: Document-level numbering inference.
         """
         super().__init__(
             json_result=json_result,
@@ -45,6 +51,9 @@ class PipelineResult(BaseParserResult):
             original_images=original_images,
             image_files=image_files,
             raw_json_result=raw_json_result,
+            page_metadata=page_metadata,
+            page_number_candidates=page_number_candidates,
+            document_page_numbering=document_page_numbering,
         )
         self.layout_vis_images = layout_vis_images
 

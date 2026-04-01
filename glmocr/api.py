@@ -29,8 +29,8 @@ from pathlib import Path
 
 from glmocr.config import load_config
 from glmocr.parser_result import PipelineResult
+from glmocr.utils.image_asset_utils import export_image_assets
 from glmocr.utils.logging import get_logger, ensure_logging_configured
-from glmocr.utils.markdown_utils import resolve_image_regions
 
 logger = get_logger(__name__)
 
@@ -84,6 +84,7 @@ class GlmOcr:
         ocr_api_port: Optional[int] = None,
         cuda_visible_devices: Optional[str] = None,
         layout_device: Optional[str] = None,
+        detect_printed_page_numbers: Optional[bool] = None,
         **kwargs: Any,
     ):
         """Initialize GlmOcr.
@@ -130,6 +131,7 @@ class GlmOcr:
             ocr_api_port=ocr_api_port,
             cuda_visible_devices=cuda_visible_devices,
             layout_device=layout_device,
+            detect_printed_page_numbers=detect_printed_page_numbers,
             **kwargs,
         )
         # Apply logging config for API/SDK usage.
@@ -441,8 +443,11 @@ class GlmOcr:
                     {
                         "index": region.get("index", 0),
                         "label": region.get("label", "text"),
+                        "native_label": region.get("label", "text"),
                         "content": region.get("content", ""),
                         "bbox_2d": bbox,
+                        "layout_index": region.get("index", 0),
+                        "layout_score": float(region.get("score") or 0.0),
                     }
                 )
             json_result.append(page_result)
@@ -454,11 +459,33 @@ class GlmOcr:
             pages_info,
         )
 
-        json_result, markdown_result, image_files = resolve_image_regions(
+        json_result, markdown_result, image_files = export_image_assets(
             json_result,
             markdown_result,
             source,
+            enable_image_asset_export=self.config_model.pipeline.result_formatter.enable_image_asset_export,
+            markdown_image_preference=self.config_model.pipeline.result_formatter.markdown_image_preference,
+            image_match_iou_threshold=self.config_model.pipeline.result_formatter.image_match_iou_threshold,
+            image_match_containment_threshold=self.config_model.pipeline.result_formatter.image_match_containment_threshold,
+            rendered_image_dpi=self.config_model.pipeline.result_formatter.rendered_image_dpi,
         )
+
+        page_metadata = None
+        page_number_candidates = None
+        document_page_numbering = None
+        if self.config_model.pipeline.result_formatter.detect_printed_page_numbers:
+            from glmocr.postprocess import ResultFormatter
+
+            formatter = ResultFormatter(self.config_model.pipeline.result_formatter)
+            (
+                page_number_candidates,
+                document_page_numbering,
+                page_metadata,
+            ) = formatter.extract_printed_page_data(json_result)
+
+        from glmocr.postprocess import ResultFormatter
+
+        ResultFormatter._strip_layout_metadata(json_result)
 
         # Create PipelineResult
         result = PipelineResult(
@@ -466,6 +493,9 @@ class GlmOcr:
             markdown_result=markdown_result,
             original_images=[source],
             image_files=image_files or None,
+            page_metadata=page_metadata,
+            page_number_candidates=page_number_candidates,
+            document_page_numbering=document_page_numbering,
         )
 
         # Store additional MaaS response data

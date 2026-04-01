@@ -30,6 +30,9 @@ class BaseParserResult(ABC):
         original_images: Optional[List[str]] = None,
         image_files: Optional[Dict[str, Any]] = None,
         raw_json_result: Optional[list] = None,
+        page_metadata: Optional[List[Dict[str, Any]]] = None,
+        page_number_candidates: Optional[List[Dict[str, Any]]] = None,
+        document_page_numbering: Optional[Dict[str, Any]] = None,
     ):
         """Initialize.
 
@@ -37,10 +40,13 @@ class BaseParserResult(ABC):
             json_result: JSON result (string, dict, or list).
             markdown_result: Markdown result (optional).
             original_images: Original image paths.
-            image_files: Mapping of ``filename`` → PIL Image for image-type
-                regions, to be saved under ``imgs/`` during :meth:`save`.
+            image_files: Mapping of relative output path → image asset payload
+                for image-type regions, to be saved during :meth:`save`.
             raw_json_result: Raw model output before post-processing;
                 saved as ``{name}_model.json`` alongside the final result.
+            page_metadata: Derived per-page printed page metadata.
+            page_number_candidates: Raw printed page-number candidates.
+            document_page_numbering: Document-level numbering inference.
         """
         if isinstance(json_result, str):
             try:
@@ -56,6 +62,9 @@ class BaseParserResult(ABC):
         ]
         self.image_files = image_files
         self.raw_json_result = raw_json_result
+        self.page_metadata = page_metadata
+        self.page_number_candidates = page_number_candidates
+        self.document_page_numbering = document_page_numbering
 
     @abstractmethod
     def save(
@@ -88,6 +97,27 @@ class BaseParserResult(ABC):
                     json_data = json.loads(json_data)
                 except json.JSONDecodeError:
                     pass
+
+            has_printed_page_data = (
+                bool(self.page_metadata)
+                or bool(self.page_number_candidates)
+                or self.document_page_numbering is not None
+            )
+
+            if has_printed_page_data:
+                json_data = {
+                    "json_result": json_data,
+                    "page_metadata": (
+                        self.page_metadata if self.page_metadata is not None else []
+                    ),
+                    "page_number_candidates": (
+                        self.page_number_candidates
+                        if self.page_number_candidates is not None
+                        else []
+                    ),
+                    "document_page_numbering": self.document_page_numbering,
+                }
+
             with open(json_file, "w", encoding="utf-8") as f:
                 if isinstance(json_data, (dict, list)):
                     json.dump(json_data, f, ensure_ascii=False, indent=2)
@@ -114,13 +144,16 @@ class BaseParserResult(ABC):
 
         # Image files produced by the result formatter
         if self.image_files:
-            imgs_dir = output_path / "imgs"
-            imgs_dir.mkdir(parents=True, exist_ok=True)
-            for filename, img in self.image_files.items():
+            for rel_path, img in self.image_files.items():
                 try:
-                    img.save(imgs_dir / filename, quality=95)
+                    target = output_path / rel_path
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if isinstance(img, (bytes, bytearray)):
+                        target.write_bytes(bytes(img))
+                    else:
+                        img.save(target, quality=95)
                 except Exception as e:
-                    logger.warning("Failed to save image %s: %s", filename, e)
+                    logger.warning("Failed to save image %s: %s", rel_path, e)
             self.image_files = None
 
     def to_dict(self) -> dict:
@@ -134,6 +167,12 @@ class BaseParserResult(ABC):
             "markdown_result": self.markdown_result or "",
             "original_images": self.original_images,
         }
+        if self.page_metadata is not None:
+            d["page_metadata"] = self.page_metadata
+        if self.page_number_candidates is not None:
+            d["page_number_candidates"] = self.page_number_candidates
+        if self.document_page_numbering is not None:
+            d["document_page_numbering"] = self.document_page_numbering
         # Include optional metadata set by MaaS mode.
         for attr in ("_usage", "_data_info", "_error"):
             val = getattr(self, attr, None)
