@@ -38,11 +38,13 @@ dependencies = [
 
 [project.optional-dependencies]
 layout = [
+  "opencv-python-headless>=4.10.0",
   "torch>=2.10.0",
   "torchvision>=0.25.0",
   "transformers>=5.3.0",
   "sentencepiece>=0.2.0",
   "accelerate>=1.13.0",
+  "safetensors>=0.4.0",
 ]
 
 server = [
@@ -50,21 +52,25 @@ server = [
 ]
 
 selfhosted = [
+  "opencv-python-headless>=4.10.0",
   "torch>=2.10.0",
   "torchvision>=0.25.0",
   "transformers>=5.3.0",
   "sentencepiece>=0.2.0",
   "accelerate>=1.13.0",
   "pypdfium2>=5.6.0",
+  "safetensors>=0.4.0",
 ]
 
 all = [
+  "opencv-python-headless>=4.10.0",
   "torch>=2.10.0",
   "torchvision>=0.25.0",
   "transformers>=5.3.0",
   "sentencepiece>=0.2.0",
   "accelerate>=1.13.0",
   "pypdfium2>=5.6.0",
+  "safetensors>=0.4.0",
   "flask>=3.1.0",
 ]
 dev = [
@@ -85,9 +91,13 @@ Documentation = "https://github.com/zai-org/glm-ocr#readme"
 Issues = "https://github.com/zai-org/glm-ocr/issues"
 
 [tool.setuptools]
+include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["glmocr*"]
+
+[tool.setuptools.package-data]
+glmocr = ["config.yaml"]
 
 [tool.black]
 line-length = 100
