@@ -177,7 +177,7 @@ pipeline:
     # PP-DocLayoutV3 model directory
     # Can be a local folder or a Hugging Face model id
     # (Use *_safetensors for Transformers; PaddlePaddle/PP-DocLayoutV3 is a PaddleOCR export)
-    model_dir: /workspace/ocr_document_data_cloud/ckpt/opensource/PP-DocLayoutV3_safetensors
+    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
 
     # Detection threshold
     threshold: 0.3
