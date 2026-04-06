@@ -81,7 +81,9 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             return model_path
         if model_path.is_dir():
             return model_path / "model.safetensors"
-        return Path(hf_hub_download(repo_id=self.model_dir, filename="model.safetensors"))
+        return Path(
+            hf_hub_download(repo_id=self.model_dir, filename="model.safetensors")
+        )
 
     def _prepare_pp_doclayout_state_dict(self) -> Dict[str, torch.Tensor]:
         """Alias PP-DocLayoutV3 encoder head weights to decoder head names."""

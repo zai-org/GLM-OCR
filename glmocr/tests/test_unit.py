@@ -198,7 +198,9 @@ class TestLayoutDeviceUnit:
         for source_key, target_key in self._ALIAS_PAIRS.items():
             assert target_key in state_dict
             assert torch.equal(state_dict[source_key], state_dict[target_key])
-            assert state_dict[source_key].data_ptr() != state_dict[target_key].data_ptr()
+            assert (
+                state_dict[source_key].data_ptr() != state_dict[target_key].data_ptr()
+            )
 
     def test_prepare_pp_doclayout_state_dict_keeps_existing_decoder_heads(
         self, tmp_path
