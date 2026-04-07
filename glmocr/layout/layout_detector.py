@@ -64,10 +64,12 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                 "detection. Set it to a local checkpoint directory or a Hugging "
                 "Face model id such as 'PaddlePaddle/PP-DocLayoutV3_safetensors'."
             )
-        if not isinstance(self.label_task_mapping, dict) or not self.label_task_mapping:
+        if self.label_task_mapping is not None and (
+            not isinstance(self.label_task_mapping, dict) or not self.label_task_mapping
+        ):
             raise ValueError(
                 "pipeline.layout.label_task_mapping must be a non-empty mapping "
-                "when layout detection is enabled."
+                "when provided."
             )
 
     def start(self):
@@ -98,6 +100,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                 "Missing id2label in both layout config and model config; "
                 "please set pipeline.layout.id2label."
             )
+
         # Patch upstream _extract_polygon_points_by_masks to guard against
         # empty mask crops that crash cv2.resize with !ssize.empty().
         def _safe_extract(boxes, masks, scale_ratio):

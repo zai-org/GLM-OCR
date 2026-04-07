@@ -145,7 +145,7 @@ class TestLayoutDeviceUnit:
                 return_value=mock_model,
             ),
             patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessorFast.from_pretrained",
+                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
         ):
@@ -164,7 +164,7 @@ class TestLayoutDeviceUnit:
                 return_value=mock_model,
             ),
             patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessorFast.from_pretrained",
+                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
         ):
@@ -185,7 +185,7 @@ class TestLayoutDeviceUnit:
                 return_value=mock_model,
             ),
             patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessorFast.from_pretrained",
+                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
             patch.object(torch.cuda, "is_available", return_value=False),
@@ -221,7 +221,7 @@ class TestLayoutDeviceUnit:
                 return_value=mock_model,
             ),
             patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessorFast.from_pretrained",
+                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
             patch.object(torch.cuda, "is_available", return_value=True),
@@ -253,7 +253,7 @@ class TestLayoutDeviceUnit:
                 return_value=mock_model,
             ),
             patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessorFast.from_pretrained",
+                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
         ):
@@ -283,7 +283,7 @@ class TestLayoutDeviceUnit:
                 return_value=mock_model,
             ),
             patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessorFast.from_pretrained",
+                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
         ):
@@ -314,7 +314,7 @@ class TestLayoutDeviceUnit:
                 return_value=mock_model,
             ),
             patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessorFast.from_pretrained",
+                "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
             pytest.raises(RuntimeError, match="Missing id2label"),
