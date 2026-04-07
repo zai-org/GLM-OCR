@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict
 
 import cv2
 import torch
 import numpy as np
 from PIL import Image
-from huggingface_hub import hf_hub_download
-from safetensors.torch import load_file
 from transformers import (
-    PPDocLayoutV3Config,
     PPDocLayoutV3ForObjectDetection,
     PPDocLayoutV3ImageProcessor,
 )
@@ -74,45 +70,6 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                 "when layout detection is enabled."
             )
 
-    def _resolve_model_weights_path(self) -> Path:
-        """Return the local safetensors weights path for the configured model."""
-        model_path = Path(self.model_dir)
-        if model_path.is_file():
-            return model_path
-        if model_path.is_dir():
-            return model_path / "model.safetensors"
-        return Path(
-            hf_hub_download(repo_id=self.model_dir, filename="model.safetensors")
-        )
-
-    def _prepare_pp_doclayout_state_dict(self) -> Dict[str, torch.Tensor]:
-        """Alias PP-DocLayoutV3 encoder head weights to decoder head names."""
-        state_dict = load_file(str(self._resolve_model_weights_path()))
-        alias_pairs = {
-            "model.enc_score_head.weight": "model.decoder.class_embed.weight",
-            "model.enc_score_head.bias": "model.decoder.class_embed.bias",
-            "model.enc_bbox_head.layers.0.weight": "model.decoder.bbox_embed.layers.0.weight",
-            "model.enc_bbox_head.layers.0.bias": "model.decoder.bbox_embed.layers.0.bias",
-            "model.enc_bbox_head.layers.1.weight": "model.decoder.bbox_embed.layers.1.weight",
-            "model.enc_bbox_head.layers.1.bias": "model.decoder.bbox_embed.layers.1.bias",
-            "model.enc_bbox_head.layers.2.weight": "model.decoder.bbox_embed.layers.2.weight",
-            "model.enc_bbox_head.layers.2.bias": "model.decoder.bbox_embed.layers.2.bias",
-        }
-
-        remapped = []
-        for source_key, target_key in alias_pairs.items():
-            if source_key in state_dict and target_key not in state_dict:
-                state_dict[target_key] = state_dict[source_key].clone()
-                remapped.append(target_key)
-
-        if remapped:
-            logger.warning(
-                "Prepared PP-DocLayoutV3 state dict with decoder head aliases: %s",
-                ", ".join(remapped),
-            )
-
-        return state_dict
-
     def start(self):
         """Load model and processor once in the main process."""
         logger.debug("Initializing PP-DocLayoutV3...")
@@ -121,11 +78,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
         self._image_processor = PPDocLayoutV3ImageProcessor.from_pretrained(
             self.model_dir
         )
-        self._model = PPDocLayoutV3ForObjectDetection.from_pretrained(
-            None,
-            config=PPDocLayoutV3Config.from_pretrained(self.model_dir),
-            state_dict=self._prepare_pp_doclayout_state_dict(),
-        )
+        self._model = PPDocLayoutV3ForObjectDetection.from_pretrained(self.model_dir)
         self._model.eval()
 
         # Device selection priority:

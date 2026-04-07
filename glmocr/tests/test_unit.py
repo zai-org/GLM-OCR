@@ -42,17 +42,6 @@ class TestConfig:
 class TestLayoutDeviceUnit:
     """Unit tests for layout device selection and config plumbing (mocked)."""
 
-    _ALIAS_PAIRS = {
-        "model.enc_score_head.weight": "model.decoder.class_embed.weight",
-        "model.enc_score_head.bias": "model.decoder.class_embed.bias",
-        "model.enc_bbox_head.layers.0.weight": "model.decoder.bbox_embed.layers.0.weight",
-        "model.enc_bbox_head.layers.0.bias": "model.decoder.bbox_embed.layers.0.bias",
-        "model.enc_bbox_head.layers.1.weight": "model.decoder.bbox_embed.layers.1.weight",
-        "model.enc_bbox_head.layers.1.bias": "model.decoder.bbox_embed.layers.1.bias",
-        "model.enc_bbox_head.layers.2.weight": "model.decoder.bbox_embed.layers.2.weight",
-        "model.enc_bbox_head.layers.2.bias": "model.decoder.bbox_embed.layers.2.bias",
-    }
-
     @staticmethod
     def _require_layout_runtime():
         """Require optional self-hosted layout deps, otherwise skip tests."""
@@ -65,14 +54,6 @@ class TestLayoutDeviceUnit:
         )
         pytest.importorskip(
             "cv2",
-            reason="layout device unit tests require optional selfhosted deps",
-        )
-        pytest.importorskip(
-            "safetensors",
-            reason="layout device unit tests require optional selfhosted deps",
-        )
-        pytest.importorskip(
-            "huggingface_hub",
             reason="layout device unit tests require optional selfhosted deps",
         )
         return torch
@@ -135,33 +116,6 @@ class TestLayoutDeviceUnit:
         label_task_mapping={"text": ["text"]},
     )
 
-    def _write_layout_weights(self, tmp_path, *, include_decoder_heads=False):
-        """Write a minimal PP-DocLayoutV3 safetensors file for tests."""
-        torch = self._require_layout_runtime()
-        from safetensors.torch import save_file
-
-        state_dict = {
-            "model.enc_score_head.weight": torch.arange(6, dtype=torch.float32).reshape(
-                2, 3
-            ),
-            "model.enc_score_head.bias": torch.tensor([0.1, 0.2], dtype=torch.float32),
-            "model.enc_bbox_head.layers.0.weight": torch.full((2, 2), 1.0),
-            "model.enc_bbox_head.layers.0.bias": torch.full((2,), 2.0),
-            "model.enc_bbox_head.layers.1.weight": torch.full((2, 2), 3.0),
-            "model.enc_bbox_head.layers.1.bias": torch.full((2,), 4.0),
-            "model.enc_bbox_head.layers.2.weight": torch.full((2, 2), 5.0),
-            "model.enc_bbox_head.layers.2.bias": torch.full((2,), 6.0),
-            "model.denoising_class_embed.weight": torch.tensor(
-                [[7.0, 8.0]], dtype=torch.float32
-            ),
-        }
-        if include_decoder_heads:
-            state_dict["model.decoder.class_embed.weight"] = torch.full((2, 3), 99.0)
-            state_dict["model.decoder.class_embed.bias"] = torch.full((2,), 98.0)
-
-        save_file(state_dict, str(tmp_path / "model.safetensors"))
-        return str(tmp_path)
-
     def _mock_detector(self, device_val, *, model_dir="dummy"):
         """Create a PPDocLayoutDetector with mocked model, ready for start()."""
         self._require_layout_runtime()
@@ -179,93 +133,30 @@ class TestLayoutDeviceUnit:
         mock_model.config = MagicMock()
         mock_model.config.id2label = {0: "text"}
         mock_processor = MagicMock()
-        mock_config = MagicMock()
-        return det, mock_model, mock_processor, mock_config
+        return det, mock_model, mock_processor
 
-    def test_prepare_pp_doclayout_state_dict_aliases_encoder_heads(self, tmp_path):
-        """Encoder detection heads are cloned into decoder head names."""
-        torch = self._require_layout_runtime()
-        from glmocr.layout.layout_detector import PPDocLayoutDetector
-        from glmocr.config import LayoutConfig
-
-        model_dir = self._write_layout_weights(tmp_path)
-        det = PPDocLayoutDetector(
-            LayoutConfig(device="cpu", model_dir=model_dir, **self._MOCK_LAYOUT_KWARGS)
-        )
-
-        state_dict = det._prepare_pp_doclayout_state_dict()
-
-        for source_key, target_key in self._ALIAS_PAIRS.items():
-            assert target_key in state_dict
-            assert torch.equal(state_dict[source_key], state_dict[target_key])
-            assert (
-                state_dict[source_key].data_ptr() != state_dict[target_key].data_ptr()
-            )
-
-    def test_prepare_pp_doclayout_state_dict_keeps_existing_decoder_heads(
-        self, tmp_path
-    ):
-        """Existing decoder head weights are not overwritten by aliasing."""
-        torch = self._require_layout_runtime()
-        from glmocr.layout.layout_detector import PPDocLayoutDetector
-        from glmocr.config import LayoutConfig
-
-        model_dir = self._write_layout_weights(tmp_path, include_decoder_heads=True)
-        det = PPDocLayoutDetector(
-            LayoutConfig(device="cpu", model_dir=model_dir, **self._MOCK_LAYOUT_KWARGS)
-        )
-
-        state_dict = det._prepare_pp_doclayout_state_dict()
-
-        assert torch.equal(
-            state_dict["model.decoder.class_embed.weight"], torch.full((2, 3), 99.0)
-        )
-        assert torch.equal(
-            state_dict["model.decoder.class_embed.bias"], torch.full((2,), 98.0)
-        )
-
-    def test_detector_device_selection_explicit_cpu(self, tmp_path):
+    def test_detector_device_selection_explicit_cpu(self):
         """When config.device='cpu', detector picks CPU even if CUDA is available."""
-        torch = self._require_layout_runtime()
-        model_dir = self._write_layout_weights(tmp_path)
-        det, mock_model, mock_proc, mock_cfg = self._mock_detector(
-            "cpu", model_dir=model_dir
-        )
+        det, mock_model, mock_proc = self._mock_detector("cpu")
 
         with (
             patch(
                 "glmocr.layout.layout_detector.PPDocLayoutV3ForObjectDetection.from_pretrained",
                 return_value=mock_model,
-            ) as mock_from_pretrained,
+            ),
             patch(
                 "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
-            ),
-            patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3Config.from_pretrained",
-                return_value=mock_cfg,
             ),
         ):
             det.start()
 
         assert det._device == "cpu"
         mock_model.to.assert_called_with("cpu")
-        passed_state_dict = mock_from_pretrained.call_args.kwargs["state_dict"]
-        assert torch.equal(
-            passed_state_dict["model.enc_score_head.weight"],
-            passed_state_dict["model.decoder.class_embed.weight"],
-        )
-        assert torch.equal(
-            passed_state_dict["model.enc_bbox_head.layers.2.bias"],
-            passed_state_dict["model.decoder.bbox_embed.layers.2.bias"],
-        )
 
-    def test_detector_device_selection_explicit_cuda(self, tmp_path):
+    def test_detector_device_selection_explicit_cuda(self):
         """When config.device='cuda:1', detector picks that device."""
-        model_dir = self._write_layout_weights(tmp_path)
-        det, mock_model, mock_proc, mock_cfg = self._mock_detector(
-            "cuda:1", model_dir=model_dir
-        )
+        det, mock_model, mock_proc = self._mock_detector("cuda:1")
 
         with (
             patch(
@@ -275,10 +166,6 @@ class TestLayoutDeviceUnit:
             patch(
                 "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
-            ),
-            patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3Config.from_pretrained",
-                return_value=mock_cfg,
             ),
         ):
             det.start()
@@ -286,14 +173,11 @@ class TestLayoutDeviceUnit:
         assert det._device == "cuda:1"
         mock_model.to.assert_called_with("cuda:1")
 
-    def test_detector_device_selection_auto_fallback_cpu(self, tmp_path):
+    def test_detector_device_selection_auto_fallback_cpu(self):
         """When config.device=None and CUDA unavailable, auto-selects CPU."""
         torch = self._require_layout_runtime()
 
-        model_dir = self._write_layout_weights(tmp_path)
-        det, mock_model, mock_proc, mock_cfg = self._mock_detector(
-            None, model_dir=model_dir
-        )
+        det, mock_model, mock_proc = self._mock_detector(None)
 
         with (
             patch(
@@ -304,27 +188,22 @@ class TestLayoutDeviceUnit:
                 "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
-            patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3Config.from_pretrained",
-                return_value=mock_cfg,
-            ),
             patch.object(torch.cuda, "is_available", return_value=False),
         ):
             det.start()
 
         assert det._device == "cpu"
 
-    def test_detector_device_selection_auto_cuda(self, tmp_path):
+    def test_detector_device_selection_auto_cuda(self):
         """When config.device=None and CUDA available, auto-selects cuda:{cuda_visible_devices}."""
         torch = self._require_layout_runtime()
         from glmocr.config import LayoutConfig
         from glmocr.layout.layout_detector import PPDocLayoutDetector
 
-        model_dir = self._write_layout_weights(tmp_path)
         cfg = LayoutConfig(
             device=None,
             cuda_visible_devices="1",
-            model_dir=model_dir,
+            model_dir="dummy",
             **self._MOCK_LAYOUT_KWARGS,
         )
         det = PPDocLayoutDetector(cfg)
@@ -335,7 +214,6 @@ class TestLayoutDeviceUnit:
         mock_model.config = MagicMock()
         mock_model.config.id2label = {0: "text"}
         mock_proc = MagicMock()
-        mock_cfg = MagicMock()
 
         with (
             patch(
@@ -346,24 +224,20 @@ class TestLayoutDeviceUnit:
                 "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
             ),
-            patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3Config.from_pretrained",
-                return_value=mock_cfg,
-            ),
             patch.object(torch.cuda, "is_available", return_value=True),
         ):
             det.start()
 
         assert det._device == "cuda:1"
 
-    def test_detector_start_uses_public_config_defaults(self, tmp_path):
+    def test_detector_start_uses_public_config_defaults(self):
         """Detector can start from load_config() defaults without extra fields."""
         self._require_layout_runtime()
         from glmocr.config import load_config
         from glmocr.layout.layout_detector import PPDocLayoutDetector
 
         cfg = load_config(mode="selfhosted").pipeline.layout
-        cfg.model_dir = self._write_layout_weights(tmp_path)
+        cfg.model_dir = "dummy"
         det = PPDocLayoutDetector(cfg)
 
         mock_model = MagicMock()
@@ -372,7 +246,6 @@ class TestLayoutDeviceUnit:
         mock_model.config = MagicMock()
         mock_model.config.id2label = dict(cfg.id2label)
         mock_proc = MagicMock()
-        mock_cfg = MagicMock()
 
         with (
             patch(
@@ -382,10 +255,6 @@ class TestLayoutDeviceUnit:
             patch(
                 "glmocr.layout.layout_detector.PPDocLayoutV3ImageProcessor.from_pretrained",
                 return_value=mock_proc,
-            ),
-            patch(
-                "glmocr.layout.layout_detector.PPDocLayoutV3Config.from_pretrained",
-                return_value=mock_cfg,
             ),
         ):
             det.start()
