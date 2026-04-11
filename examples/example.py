@@ -44,21 +44,30 @@ def main() -> int:
             "PDF inputs will be skipped. On macOS: brew install poppler"
         )
 
+    total = len(inputs)
+    processed = 0
+    skipped = 0
+    failed = 0
+
     with GlmOcr() as parser:
-        for p in inputs:
-            print(f"\n=== Parsing: {p.name} ===")
+        for idx, p in enumerate(inputs, start=1):
+            print(f"\n[{idx}/{total}] Parsing: {p.name}")
             if p.suffix.lower() == ".pdf" and not poppler_ok:
-                print("Skipping PDF (missing poppler)")
+                print(f"[{idx}/{total}] Skipping PDF (missing poppler)")
+                skipped += 1
                 continue
 
             try:
                 result = parser.parse(str(p))
                 result.save(output_dir=output_dir)
+                processed += 1
+                print(f"[{idx}/{total}] Done: {p.name}")
             except Exception as e:
-                print(f"Failed: {p.name}: {e}")
+                failed += 1
+                print(f"[{idx}/{total}] Failed: {p.name}: {e}")
                 continue
 
-    print("\nAll done.")
+    print(f"\nAll done. processed={processed}, skipped={skipped}, failed={failed}, total={total}")
     return 0
 
 
