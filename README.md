@@ -237,6 +237,14 @@ result = parse(["img1.png", "img2.jpg"])
 result = parse("https://example.com/image.png")
 result.save(output_dir="./results")
 
+# Typical output layout:
+# results/
+#   image/
+#     image.json          # structured OCR result
+#     image.md            # markdown result
+#     image_model.json    # raw model output (when available)
+#     imgs/               # extracted/cropped image regions (when available)
+
 # Note: a list is treated as pages of a single document.
 
 # Class-based API

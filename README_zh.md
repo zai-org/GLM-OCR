@@ -235,6 +235,14 @@ result = parse(["img1.png", "img2.jpg"])
 result = parse("https://example.com/image.png")
 result.save(output_dir="./results")
 
+# 典型输出目录结构：
+# results/
+#   image/
+#     image.json          # 结构化 OCR 结果
+#     image.md            # markdown 结果
+#     image_model.json    # 模型原始输出（可用时）
+#     imgs/               # 提取/裁剪得到的图片区域（可用时）
+
 # 说明：传入 list 会被当作同一文档的多页
 
 # 类接口
