@@ -312,6 +312,17 @@ class MyPipeline:
     pass
 ```
 
+## FAQ
+
+### Is this project GLM-OCR or PP-DocLayoutV3?
+
+Both are used in the full pipeline, but they serve different roles:
+
+- `GLM-OCR` is the core multimodal OCR model used for recognition and structured output.
+- `PP-DocLayoutV3` is used for document layout detection (region segmentation) before OCR.
+
+In short: `PP-DocLayoutV3` is a layout component integrated into the `GLM-OCR` pipeline, not a replacement for GLM-OCR.
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=zai-org%2FGLM-OCR&type=date&legend=top-left">

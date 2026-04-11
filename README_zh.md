@@ -309,6 +309,17 @@ class MyPipeline:
     pass
 ```
 
+## FAQ
+
+### 这个项目到底是 GLM-OCR 还是 PP-DocLayoutV3？
+
+完整 pipeline 同时使用两者，但职责不同：
+
+- `GLM-OCR` 是核心多模态 OCR 模型，负责识别与结构化输出。
+- `PP-DocLayoutV3` 用于文档版面分析（区域检测），在 OCR 前完成页面分区。
+
+简而言之：`PP-DocLayoutV3` 是 `GLM-OCR` pipeline 中的版面组件，不是 GLM-OCR 的替代品。
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=zai-org%2FGLM-OCR&type=date&legend=top-left">
