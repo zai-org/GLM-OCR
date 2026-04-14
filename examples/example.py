@@ -7,9 +7,32 @@ examples/result/ (one folder per input file).
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 
 from glmocr.api import GlmOcr
+
+try:
+    from tqdm.auto import tqdm
+except Exception:
+    tqdm = None
+
+
+def _get_pdf_pages(pdf_path: Path) -> int:
+    """Best-effort page count for local PDFs via pdfinfo."""
+    try:
+        output = subprocess.check_output(
+            ["pdfinfo", str(pdf_path)],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        for line in output.splitlines():
+            if line.lower().startswith("pages:"):
+                pages = int(line.split(":", 1)[1].strip())
+                return max(1, pages)
+    except Exception:
+        pass
+    return 1
 
 
 def main() -> int:
@@ -45,16 +68,29 @@ def main() -> int:
         )
 
     total = len(inputs)
+    work_units = [
+        _get_pdf_pages(p) if p.suffix.lower() == ".pdf" and poppler_ok else 1
+        for p in inputs
+    ]
+    total_units = sum(work_units)
     processed = 0
     skipped = 0
     failed = 0
+    progress = (
+        tqdm(total=total_units, desc="Parsing requests", unit="page")
+        if tqdm is not None and total_units > 1
+        else None
+    )
 
     with GlmOcr() as parser:
         for idx, p in enumerate(inputs, start=1):
-            print(f"\n[{idx}/{total}] Parsing: {p.name}")
+            unit_count = work_units[idx - 1]
+            print(f"\n[{idx}/{total}] Parsing: {p.name} ({unit_count} page(s))")
             if p.suffix.lower() == ".pdf" and not poppler_ok:
                 print(f"[{idx}/{total}] Skipping PDF (missing poppler)")
                 skipped += 1
+                if progress is not None:
+                    progress.update(unit_count)
                 continue
 
             try:
@@ -65,7 +101,12 @@ def main() -> int:
             except Exception as e:
                 failed += 1
                 print(f"[{idx}/{total}] Failed: {p.name}: {e}")
-                continue
+            finally:
+                if progress is not None:
+                    progress.update(unit_count)
+
+    if progress is not None:
+        progress.close()
 
     print(f"\nAll done. processed={processed}, skipped={skipped}, failed={failed}, total={total}")
     return 0
