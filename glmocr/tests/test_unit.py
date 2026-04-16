@@ -607,6 +607,121 @@ class TestResultFormatter:
         cleaned = formatter._clean_content("Hello....World")
         assert "....." not in cleaned
 
+    def test_result_formatter_chart_region_included(self):
+        """Chart regions (task_type 'skip') are not dropped and produce images."""
+        from glmocr.postprocess import ResultFormatter
+        from glmocr.config import ResultFormatterConfig
+
+        config = ResultFormatterConfig()
+        formatter = ResultFormatter(config)
+
+        chart_bbox = [10, 20, 200, 180]
+        image_bbox = [210, 20, 400, 180]
+        fake_chart_img = MagicMock(name="chart_img")
+        fake_image_img = MagicMock(name="image_img")
+
+        grouped_results = [
+            [
+                {
+                    "index": 0,
+                    "label": "chart",
+                    "task_type": "skip",
+                    "content": None,
+                    "bbox_2d": chart_bbox,
+                    "score": 0.95,
+                },
+                {
+                    "index": 1,
+                    "label": "text",
+                    "task_type": "text",
+                    "content": "Hello",
+                    "bbox_2d": [10, 200, 400, 250],
+                    "score": 0.9,
+                },
+                {
+                    "index": 2,
+                    "label": "image",
+                    "task_type": "skip",
+                    "content": None,
+                    "bbox_2d": image_bbox,
+                    "score": 0.92,
+                },
+            ]
+        ]
+
+        cropped_images = {
+            (0, *chart_bbox): fake_chart_img,
+            (0, *image_bbox): fake_image_img,
+        }
+
+        json_str, md_str, image_files = formatter.process(
+            grouped_results, cropped_images=cropped_images
+        )
+
+        # Both chart and image regions should be saved
+        assert (
+            len(image_files) == 2
+        ), f"Expected 2 image files (chart + image), got {len(image_files)}"
+
+        # Markdown should contain image references for both
+        assert "![Image 0-0]" in md_str
+        assert "![Image 0-1]" in md_str
+
+        # Text content should also be present
+        assert "Hello" in md_str
+
+        # JSON should contain both image regions
+        parsed = json.loads(json_str)
+        page_results = parsed[0]
+        labels = [r["label"] for r in page_results]
+        assert labels.count("image") == 2
+        assert "text" in labels
+
+        # task_type and score should not leak into JSON output
+        for r in page_results:
+            assert "task_type" not in r
+            assert "score" not in r
+            assert "_is_image" not in r
+
+    def test_result_formatter_chart_region_default_config(self):
+        """Chart regions work even with an empty label_visualization_mapping."""
+        from glmocr.postprocess import ResultFormatter
+        from glmocr.config import ResultFormatterConfig
+
+        # Explicitly empty mapping (the old default)
+        config = ResultFormatterConfig(label_visualization_mapping={})
+        formatter = ResultFormatter(config)
+
+        chart_bbox = [10, 20, 200, 180]
+        fake_img = MagicMock(name="chart_img")
+
+        grouped_results = [
+            [
+                {
+                    "index": 0,
+                    "label": "chart",
+                    "task_type": "skip",
+                    "content": None,
+                    "bbox_2d": chart_bbox,
+                    "score": 0.95,
+                },
+            ]
+        ]
+
+        cropped_images = {
+            (0, *chart_bbox): fake_img,
+        }
+
+        json_str, md_str, image_files = formatter.process(
+            grouped_results, cropped_images=cropped_images
+        )
+
+        # Chart region should still produce an image file via task_type fallback
+        assert (
+            len(image_files) == 1
+        ), f"Chart region lost with empty mapping, got {len(image_files)} files"
+        assert "![Image 0-0]" in md_str
+
 
 class TestMaaSClient:
     """Tests for MaaSClient."""
