@@ -222,6 +222,24 @@ glmocr parse examples/source/code.png --set pipeline.ocr_api.api_port 8080
 glmocr parse examples/source/ --set pipeline.layout.use_polygon true --set logging.level DEBUG
 ```
 
+##### 多语言文档命令示例
+
+```bash
+# 中文扫描件
+glmocr parse ./samples/zh-contract.pdf --output ./results/zh-contract/
+
+# 英文论文页面
+glmocr parse ./samples/en-paper-page.png --output ./results/en-paper/
+
+# 中英混排文档
+glmocr parse ./samples/bilingual-report.pdf --output ./results/bilingual/
+
+# 目录批处理
+glmocr parse ./samples/multilingual-set/ --output ./results/multilingual-set/
+```
+
+建议把不同语言或版式的样本输出到独立目录，方便横向比较 markdown 与 JSON 的识别效果。
+
 #### Python API
 
 ```python
