@@ -175,7 +175,27 @@ class ResultFormatterConfig(_BaseConfig):
     enable_merge_formula_numbers: bool = True
     enable_merge_text_blocks: bool = True
     enable_format_bullet_points: bool = True
-    label_visualization_mapping: Dict[str, Any] = Field(default_factory=dict)
+    label_visualization_mapping: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "image": ["chart", "image"],
+            "table": ["table"],
+            "formula": ["display_formula", "inline_formula"],
+            "text": [
+                "abstract",
+                "algorithm",
+                "content",
+                "doc_title",
+                "figure_title",
+                "paragraph_title",
+                "reference_content",
+                "text",
+                "vertical_text",
+                "vision_footnote",
+                "seal",
+                "formula_number",
+            ],
+        }
+    )
 
 
 class LayoutConfig(_BaseConfig):

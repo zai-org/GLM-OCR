@@ -186,7 +186,12 @@ class ResultFormatter(BasePostProcessor):
                     )
 
                     # Skip empty or failed content (after formatting)
-                    if result["label"] != "image":
+                    # Image/chart regions (task_type "skip") have no text
+                    # content and must not be filtered out here.
+                    is_image_region = (
+                        result["label"] == "image" or result.get("task_type") == "skip"
+                    )
+                    if not is_image_region:
                         content = result.get("content")
                         if content is None or (
                             isinstance(content, str) and content.strip() == ""
@@ -195,6 +200,7 @@ class ResultFormatter(BasePostProcessor):
 
                     # Update index
                     result["index"] = valid_idx
+                    result["_is_image"] = is_image_region
                     result.pop("task_type", None)
                     result.pop("score", None)
                     valid_idx += 1
@@ -224,7 +230,7 @@ class ResultFormatter(BasePostProcessor):
                 markdown_page_results = []
                 for result in json_page_results:
                     content = result["content"]
-                    if result["label"] == "image":
+                    if result.pop("_is_image", False):
                         bbox = result.get("bbox_2d", [])
                         key = (page_idx, *bbox) if bbox else None
                         img = (
