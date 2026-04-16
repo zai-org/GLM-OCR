@@ -98,10 +98,23 @@ with GlmOcr(config_path="config.yaml") as parser:
 
 ## Troubleshooting
 
+### Issue: Model not found / wrong model name
+
+**Symptoms:**
+
+- `model 'glm-ocr:latest' not found`
+- the request reaches Ollama but returns an empty or unsupported-model style error
+
+**Solution:**
+
+1. Verify the downloaded model name with `ollama list`.
+2. Make sure `ocr_api.model` in `config.yaml` matches the local Ollama tag exactly.
+3. If you created a custom model, update the config to that custom tag instead of `glm-ocr:latest`.
+
 ### Issue: 502 Bad Gateway Errors
 
 **Symptom:**
-```
+``` 
 API server returned status code: 502, response: no body
 ```
 
