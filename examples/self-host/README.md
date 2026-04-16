@@ -15,6 +15,16 @@ The GLM-OCR SDK supports a split **Server / Client** deployment: run the SDK Ser
 
 The Server runs the full OCR pipeline (layout detection + parallel OCR). The Client calls it over HTTP with zero local computation.
 
+## When to choose each deployment shape
+
+| Deployment shape | Best for | Trade-off |
+|---|---|---|
+| MaaS API | Fastest first run, no GPU | Depends on external API availability |
+| SDK Server + Client | Team-internal OCR service with a GPU server | You operate one always-on server |
+| Direct local vLLM / SGLang | Single-machine experiments and benchmarking | Client and model runtime share the same machine resources |
+
+If you already have a GPU box that serves several teammates, the SDK Server mode is usually the easiest way to expose a stable OCR endpoint without asking every client to install the self-hosted dependencies.
+
 ## Server Side
 
 On the GPU machine, start the Server:
