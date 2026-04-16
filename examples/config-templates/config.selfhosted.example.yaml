@@ -1,0 +1,21 @@
+pipeline:
+  maas:
+    enabled: false
+
+  ocr_api:
+    api_host: 127.0.0.1
+    api_port: 8080
+    model: glm-ocr
+    api_path: /v1/chat/completions
+    api_mode: openai
+    verify_ssl: false
+
+  result_formatter:
+    output_format: both
+
+  layout:
+    workers: 1
+    batch_size: 1
+
+logging:
+  level: INFO

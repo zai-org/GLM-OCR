@@ -1,0 +1,13 @@
+pipeline:
+  maas:
+    enabled: true
+    api_url: https://open.bigmodel.cn/api/paas/v4/layout_parsing
+    model: glm-ocr
+    api_key: your-api-key
+    verify_ssl: true
+
+  result_formatter:
+    output_format: both
+
+logging:
+  level: INFO
