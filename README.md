@@ -68,6 +68,16 @@ uv venv --python 3.12 --seed && source .venv/bin/activate
 uv pip install -e .
 ```
 
+### Quickstart matrix
+
+| Goal | Recommended path | Command / entrypoint |
+|---|---|---|
+| Parse one local image quickly | MaaS API with the base SDK | `pip install glmocr` then `glmocr parse image.png` |
+| Parse a PDF locally with full layout analysis | Self-hosted pipeline | `pip install "glmocr[selfhosted]"` then run `glmocr parse file.pdf --config config.yaml` |
+| Serve OCR as an internal HTTP API | SDK Server mode | `pip install "glmocr[selfhosted,server]"` then `python -m glmocr.server --config config.yaml` |
+| Run OCR against a local model server | vLLM / SGLang / Ollama | Start the model service first, then point `pipeline.ocr_api` to it |
+| Batch parse a folder | CLI directory mode | `glmocr parse ./documents/ --output ./results/` |
+
 ### Model Deployment
 
 Two ways to use GLM-OCR:
