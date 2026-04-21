@@ -1682,14 +1682,14 @@ class TestConvertToOllamaGenerate:
         """Handles empty messages list."""
         client = self._make_client()
         result = client._convert_to_ollama_generate({"messages": []})
-        assert result["prompt"] == ""
+        assert result["prompt"] == "Text Recognition:"
         assert "images" not in result
 
     def test_no_messages_key(self):
         """Handles missing messages key."""
         client = self._make_client()
         result = client._convert_to_ollama_generate({})
-        assert result["prompt"] == ""
+        assert result["prompt"] == "Text Recognition:"
 
     def test_non_user_messages_ignored(self):
         """System and assistant messages are ignored (last user message used)."""
