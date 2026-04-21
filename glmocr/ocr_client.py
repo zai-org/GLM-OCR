@@ -468,9 +468,12 @@ class OCRClient:
                             images.append(image_url)
 
         # Build Ollama generate request
+        # Default to "Text Recognition:" when prompt is empty because Ollama
+        # requires a non-empty prompt to trigger the model. This matches the
+        # official documented usage for GLM-OCR on Ollama.
         ollama_request = {
             "model": self.model or "glm-ocr:latest",
-            "prompt": prompt,
+            "prompt": prompt if prompt else "Text Recognition:",
             "stream": False,
         }
 
