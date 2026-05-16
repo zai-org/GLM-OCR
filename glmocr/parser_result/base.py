@@ -118,7 +118,8 @@ class BaseParserResult(ABC):
             imgs_dir.mkdir(parents=True, exist_ok=True)
             for filename, img in self.image_files.items():
                 try:
-                    img.save(imgs_dir / filename, quality=95)
+                    save_img = img.convert("RGB") if img.mode == "RGBA" else img
+                    save_img.save(imgs_dir / filename, quality=95)
                 except Exception as e:
                     logger.warning("Failed to save image %s: %s", filename, e)
             self.image_files = None
