@@ -124,7 +124,7 @@ pip install -U "vllm>=0.19.0"
 启动服务：
 
 ```bash
-pip install "transformers>=5.3.0"
+pip install "transformers>=5.3.1"
 
 vllm serve zai-org/GLM-OCR  --port 8080 --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' --served-model-name glm-ocr
 ```
