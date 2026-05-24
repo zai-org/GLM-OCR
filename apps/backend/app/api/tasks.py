@@ -113,6 +113,16 @@ async def read_file(path: str):
     try:
         file_path = Path(path)
 
+        # Prevent path traversal: resolve and check within allowed directory
+        allowed_dir = Path(settings.OUTPUT_DIR).resolve()
+        resolved_path = file_path.resolve()
+        if not str(resolved_path).startswith(str(allowed_dir) + "/") and resolved_path != allowed_dir:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: path is outside the allowed directory",
+            )
+        file_path = resolved_path
+
         # 检查文件是否存在
         if not file_path.exists():
             raise HTTPException(
