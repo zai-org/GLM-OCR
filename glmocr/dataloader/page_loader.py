@@ -9,6 +9,7 @@ Supported inputs:
 - Local file paths (images, PDFs)
 - file:// URLs
 - data:image/... base64 URLs
+- data:application/pdf;base64,... data URIs
 """
 
 from __future__ import annotations
@@ -173,6 +174,12 @@ class PageLoader:
                 yield Image.open(BytesIO(source))
             return
 
+        # data:application/pdf;base64,... data URI
+        if source.startswith("data:application/pdf"):
+            _, b64_data = source.split(",", 1)
+            yield from self._iter_pdf_bytes(base64.b64decode(b64_data))
+            return
+
         if source.startswith("file://"):
             file_path = source[7:]
         else:
@@ -245,6 +252,11 @@ class PageLoader:
             if source[:5] == b"%PDF-":
                 return self._load_pdf_bytes(source)
             return [Image.open(BytesIO(source))]
+
+        # data:application/pdf;base64,... data URI
+        if source.startswith("data:application/pdf"):
+            _, b64_data = source.split(",", 1)
+            return self._load_pdf_bytes(base64.b64decode(b64_data))
 
         if source.startswith("file://"):
             file_path = source[7:]
