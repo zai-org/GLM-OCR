@@ -111,7 +111,24 @@ async def read_file(path: str):
     - **path**: 文件路径
     """
     try:
-        file_path = Path(path)
+        # Confine reads to the configured output directory. Resolve the
+        # requested path (collapsing any "../" traversal and symlinks) and
+        # require it to live under OUTPUT_DIR; otherwise an arbitrary `path`
+        # (e.g. "/etc/passwd") would be read and returned, exposing any file
+        # readable by the service.
+        base_dir = Path(settings.OUTPUT_DIR).resolve()
+        try:
+            file_path = Path(path).resolve()
+        except (OSError, ValueError, RuntimeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid path",
+            )
+        if not file_path.is_relative_to(base_dir):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: path is outside the allowed directory",
+            )
 
         # 检查文件是否存在
         if not file_path.exists():
