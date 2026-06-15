@@ -118,7 +118,13 @@ async def read_file(path: str):
         # readable by the service.
         base_dir = Path(settings.OUTPUT_DIR).resolve()
         try:
-            file_path = Path(path).resolve()
+            requested = Path(path)
+            # Interpret relative paths under OUTPUT_DIR (not the process CWD),
+            # so a relative request keeps its intended OUTPUT_DIR-relative
+            # meaning instead of being rejected.
+            if not requested.is_absolute():
+                requested = base_dir / requested
+            file_path = requested.resolve()
         except (OSError, ValueError, RuntimeError):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
