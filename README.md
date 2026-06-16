@@ -1,4 +1,4 @@
-## GLM-OCR
+# GLM-OCR
 
 [中文阅读](README_zh.md)
 
@@ -131,7 +131,7 @@ vllm serve zai-org/GLM-OCR  --port 8080 --speculative-config '{"method": "mtp", 
 ```
 
 >Note
-  Add `--max-model-len` and `--gpu-memory-utilization` according to Your own machine to handle large image/pdf
+  Add `--max-model-len` and `--gpu-memory-utilization` according to your own machine to handle large images/PDFs
 
 ##### Using SGLang
 
@@ -154,7 +154,7 @@ SGLANG_ENABLE_SPEC_V2=1 sglang serve --model-path zai-org/GLM-OCR --port 8080 --
 ```
 
 >Note
-  Add `--context-len` and `--mem-fraction-static` according to Your own machine to handle large image/pdf
+  Add `--context-len` and `--mem-fraction-static` according to your own machine to handle large images/PDFs
 
 
 #### Option 3: Ollama/MLX
