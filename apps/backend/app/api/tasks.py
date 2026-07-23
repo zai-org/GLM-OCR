@@ -111,7 +111,22 @@ async def read_file(path: str):
     - **path**: 文件路径
     """
     try:
-        file_path = Path(path)
+        # Validate path: must be within OUTPUT_DIR to prevent path traversal reading arbitrary files (CWE-22)
+        base_dir = Path(settings.OUTPUT_DIR).resolve()
+        try:
+            file_path = Path(path).resolve(strict=False)
+        except (OSError, RuntimeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file path",
+            )
+        try:
+            file_path.relative_to(base_dir)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access to the requested path is not allowed",
+            )
 
         # 检查文件是否存在
         if not file_path.exists():
