@@ -133,6 +133,21 @@ class BaseParserResult(ABC):
             with open(md_file, "w", encoding="utf-8") as f:
                 f.write(self.markdown_result)
 
+        # Spreadsheet export: CSV/TSV for every table found in the result (#225)
+        try:
+            from glmocr.utils.spreadsheet_utils import extract_tables, save_tables
+
+            tables = extract_tables(self.json_result)
+            saved = save_tables(tables, output_path, f"{base_name}_table")
+            if saved:
+                logger.info(
+                    "Exported %d table(s) to %s",
+                    len(tables),
+                    [p.name for p in saved],
+                )
+        except Exception as e:
+            logger.warning("Failed to export tables as CSV/TSV: %s", e)
+
         # Image files produced by the result formatter
         if self.image_files:
             imgs_dir = output_path / "imgs"
