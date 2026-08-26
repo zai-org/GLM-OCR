@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from glmocr.utils.logging import get_logger
 
-from .base import BaseParserResult
+from .base import BaseParserResult, flatten_to_rgb
 
 logger = get_logger(__name__)
 
@@ -76,7 +76,7 @@ class PipelineResult(BaseParserResult):
         for page_idx, vis_img in self.layout_vis_images.items():
             name = f"{stem_name}.jpg" if single else f"{stem_name}_page{page_idx}.jpg"
             try:
-                vis_img.save(target_dir / name, quality=95)
+                flatten_to_rgb(vis_img).save(target_dir / name, quality=95)
             except Exception as e:
                 logger.warning("Failed to save layout vis %s: %s", name, e)
 
