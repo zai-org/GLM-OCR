@@ -380,5 +380,7 @@ def save_layout_visualization(
     # Ensure parent directory exists
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
 
-    # Save image
-    vis_img.save(save_path, quality=95)
+    # Save image (flatten alpha so RGBA inputs can be written as JPEG)
+    from glmocr.parser_result.base import flatten_to_rgb
+
+    flatten_to_rgb(vis_img).save(save_path, quality=95)
