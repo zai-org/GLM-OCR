@@ -98,6 +98,51 @@ with GlmOcr(config_path="config.yaml") as parser:
 
 ## Troubleshooting
 
+### Issue: OCR output repeats endlessly
+
+**Symptom:**
+The model extracts the text correctly but then keeps repeating the same
+output instead of stopping (sometimes hundreds of times), especially when
+running quantized builds on CPU.
+
+**Cause:**
+GLM-OCR is trained with three predefined task prompts — `Text Recognition:`,
+`Table Recognition:` and `Formula Recognition:` (see
+`examples/finetune/README.md`, "Prompt Settings"). Free-form instructions
+("Extract ONLY the exact visible text...") fall outside the training
+distribution; on quantized GGUF runtimes the model may then fail to emit its
+end-of-sequence token after the first result and instead loop.
+
+**Solution 1 — use a predefined prompt:**
+
+```json
+{
+  "model": "glm-ocr:latest",
+  "prompt": "Text Recognition:",
+  "images": ["<base64>"],
+  "stream": false
+}
+```
+
+**Solution 2 — configure a stop sequence as a safety net:**
+
+```json
+"options": {
+  "stop": ["```"],
+  "temperature": 0
+}
+```
+
+Note that repetition can still occur on some images even with a stop
+sequence if the model never emits the delimiter; combining both solutions
+(predefined prompt **and** stop sequence) is the reliable setup. If you
+control the Modelfile, baking the parameters in avoids per-request config:
+
+```
+PARAMETER temperature 0
+PARAMETER stop ```
+```
+
 ### Issue: 502 Bad Gateway Errors
 
 **Symptom:**
@@ -134,12 +179,12 @@ ollama ps
 # Test with a simple request (Linux/Mac)
 curl http://localhost:11434/api/generate -d '{
   "model": "glm-ocr:latest",
-  "prompt": "Hello",
+  "prompt": "Text Recognition:",
   "stream": false
 }'
 
 # Windows PowerShell
-Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -Body '{"model":"glm-ocr:latest","prompt":"Hello","stream":false}' -ContentType "application/json"
+Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -Body '{"model":"glm-ocr:latest","prompt":"Text Recognition:","stream":false}' -ContentType "application/json"
 ```
 
 ### Recommendations

@@ -14,7 +14,28 @@ from typing import Any, Dict, List, Optional, Union
 
 from glmocr.utils.logging import get_logger
 
+from PIL import Image
+
 logger = get_logger(__name__)
+
+
+def flatten_to_rgb(image: "Image.Image") -> "Image.Image":
+    """Return an RGB copy of *image* so it can always be saved as JPEG.
+
+    JPEG does not support alpha; RGBA/LA/P images (e.g. extracted from
+    transparent PNG sources) must first be flattened onto an opaque white
+    background, otherwise ``Image.save`` raises and the image is lost.
+    """
+    if image.mode == "RGB":
+        return image
+    if image.mode in ("RGBA", "LA", "PA") or (
+        image.mode == "P" and "transparency" in image.info
+    ):
+        rgba = image.convert("RGBA")
+        background = Image.new("RGB", rgba.size, (255, 255, 255))
+        background.paste(rgba, mask=rgba.split()[-1])
+        return background
+    return image.convert("RGB")
 
 
 class BaseParserResult(ABC):
@@ -112,13 +133,28 @@ class BaseParserResult(ABC):
             with open(md_file, "w", encoding="utf-8") as f:
                 f.write(self.markdown_result)
 
+        # Spreadsheet export: CSV/TSV for every table found in the result (#225)
+        try:
+            from glmocr.utils.spreadsheet_utils import extract_tables, save_tables
+
+            tables = extract_tables(self.json_result)
+            saved = save_tables(tables, output_path, f"{base_name}_table")
+            if saved:
+                logger.info(
+                    "Exported %d table(s) to %s",
+                    len(tables),
+                    [p.name for p in saved],
+                )
+        except Exception as e:
+            logger.warning("Failed to export tables as CSV/TSV: %s", e)
+
         # Image files produced by the result formatter
         if self.image_files:
             imgs_dir = output_path / "imgs"
             imgs_dir.mkdir(parents=True, exist_ok=True)
             for filename, img in self.image_files.items():
                 try:
-                    img.save(imgs_dir / filename, quality=95)
+                    flatten_to_rgb(img).save(imgs_dir / filename, quality=95)
                 except Exception as e:
                     logger.warning("Failed to save image %s: %s", filename, e)
             self.image_files = None
