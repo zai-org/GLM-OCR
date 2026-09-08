@@ -10,10 +10,11 @@ Run GLM-OCR natively on Apple Silicon Macs using [mlx-vlm](https://github.com/Bl
 
 ## Why a Separate Environment?
 
-mlx-vlm currently requires `transformers>=5.0.0rc3`, which conflicts with the
-`transformers` version pinned by the GLM-OCR SDK (used for PP-DocLayout-V3
-layout detection). Until these version requirements converge in a future
-release, **you need two Python environments**:
+mlx-vlm requires `transformers>=5.0.0rc3`; the GLM-OCR SDK's `layout` extra
+(used for PP-DocLayout-V3 layout detection) requires `transformers>=5.3.0`.
+These ranges now overlap, so a single environment can resolve both. This guide
+still uses **two Python environments**, which keeps the inference server and the
+SDK independently upgradable and is the layout this guide is tested against:
 
 | Environment | Purpose                                         | Key dependency           |
 | ----------- | ----------------------------------------------- | ------------------------ |
@@ -37,15 +38,16 @@ python3 -m venv .venv-mlx
 source .venv-mlx/bin/activate
 ```
 
-Install mlx-vlm **from git** (the `glm_ocr` model architecture is not yet
-available in the latest PyPI release 0.3.10):
+Install mlx-vlm. The `glm_ocr` model architecture ships in the PyPI release as
+of **0.7.0**, so the plain install is enough:
 
 ```bash
-pip install git+https://github.com/Blaizzy/mlx-vlm.git
+pip install 'mlx-vlm>=0.7.0'
 ```
 
-> **Note:** Once a new mlx-vlm release ships with GLM-OCR support, you can
-> switch to `pip install mlx-vlm` instead.
+> **Note:** Older releases (up to 0.3.10) predate GLM-OCR support. If you are
+> pinned to one of those, or want an unreleased fix, install from git instead:
+> `pip install git+https://github.com/Blaizzy/mlx-vlm.git`
 
 ## Step 2 - Launch the mlx-vlm Server
 
@@ -99,20 +101,22 @@ python3 -m venv .venv-sdk
 source .venv-sdk/bin/activate
 ```
 
-Install the GLM-OCR SDK:
+Install the GLM-OCR SDK with the `layout` extra:
 
 ```bash
-pip install -e .
-
-# Install transformers from source (required by the SDK)
-pip install git+https://github.com/huggingface/transformers.git
+pip install -e '.[layout]'
 ```
+
+> **Important:** the `layout` extra is required. A bare `pip install -e .` omits
+> `torch`, `torchvision` and `transformers`, and the pipeline then fails at
+> startup with `ImportError: Layout detector dependencies are missing or
+> incompatible`.
 
 ## Step 4 - Configure the SDK
 
-Edit `glmocr/config.yaml` (or create a custom config file) to point the SDK
-at the mlx-vlm server. The key difference from vLLM/SGLang is the `model`
-field, which is **required** for mlx-vlm, and api_path (no `/v1` prefix):
+Point the SDK at the mlx-vlm server. The key differences from vLLM/SGLang are
+the `model` field, which is **required** for mlx-vlm, and `api_path` (no `/v1`
+prefix):
 
 ```yaml
 pipeline:
@@ -125,6 +129,70 @@ pipeline:
     model: mlx-community/GLM-OCR-bf16 # Required for mlx-vlm
     api_path: /chat/completions # Remove /v1 prefix
 ```
+
+> **Important — a custom config file replaces the defaults, it does not merge
+> with them.** When you pass `--config my_config.yaml`, that file becomes the
+> entire YAML baseline; the packaged `glmocr/config.yaml` is **not** layered
+> underneath it (only `GLMOCR_*` environment variables and keyword overrides are
+> applied on top). Any key you omit falls back to the built-in dataclass default,
+> not to the packaged value.
+>
+> A file containing only the four `ocr_api` keys above therefore loses
+> `pipeline.layout.model_dir` (which has no built-in default), and the run fails
+> with `pipeline.layout.model_dir is required for self-hosted layout`. It also
+> silently empties `layout.id2label`, `layout.label_task_mapping` and
+> `page_loader.task_prompt_mapping`, which the pipeline needs to label and route
+> detected regions.
+
+So use one of these two approaches:
+
+**Option A — edit the packaged config in place.** Apply the changes above
+directly to `glmocr/config.yaml`; no `--config` flag is then needed.
+
+**Option B — copy the packaged config, then edit the copy:**
+
+```bash
+cp glmocr/config.yaml my_config.yaml
+# edit my_config.yaml: set maas.enabled=false and the four ocr_api keys above
+glmocr parse examples/source/code.png --config my_config.yaml
+```
+
+> **Watch out:** `config.yaml` contains **two** `model:` keys — one under
+> `pipeline.maas`, one under `pipeline.ocr_api`. The mlx-vlm model name belongs
+> to `pipeline.ocr_api`. Editing the `maas` one instead leaves `ocr_api.model` as
+> `glm-ocr`, which the mlx-vlm server rejects with an HTTP 400.
+
+Do **not** hand-write a minimal `--config` file from scratch.
+
+### Set `max_workers: 1` (important for mlx-vlm)
+
+The SDK issues one OCR request per detected region and, by default, runs up to
+`pipeline.max_workers` of them in parallel (`32` in the packaged config). The
+mlx-vlm server does not handle these concurrent vision requests safely: under
+concurrency, generations are **silently truncated and corrupted** — a region's
+output stops mid-number, repeats the wrong label, or drops a table row
+altogether. Nothing is logged; you simply get less text.
+
+```yaml
+pipeline:
+  max_workers: 1
+```
+
+Measured on a 194-file / 228-page invoice corpus (Apple M1 Pro, GLM-OCR-bf16):
+
+| `max_workers` | Correct invoice totals | Reproducible? |
+| ------------- | ---------------------- | ------------- |
+| `4`           | 91.3%                  | no            |
+| `1`           | ~96.6%                 | yes           |
+
+Concurrency also makes runs **non-deterministic** despite `temperature: 0.0`,
+`top_k: 1`. Of 10 byte-identical duplicate PDFs in that corpus, 7 produced
+different text at `max_workers: 4` (3 substantially). Re-parsing one file 4x
+gave a diverging result on the 4th run; at `max_workers: 1`, three consecutive
+runs were byte-identical.
+
+Since the mlx-vlm server processes requests sequentially anyway, `max_workers: 1`
+costs little throughput and removes the corruption.
 
 ### Full Configuration Reference
 
@@ -195,12 +263,41 @@ result.save(output_dir="./results")
 
 ### `model glm_ocr not found` or similar import error
 
-You may be using the PyPI release of mlx-vlm which doesn't include GLM-OCR
-support yet. Install from git instead:
+You are probably on an mlx-vlm release older than 0.7.0, which predates GLM-OCR
+support. Upgrade:
 
 ```bash
-pip install git+https://github.com/Blaizzy/mlx-vlm.git
+pip install -U 'mlx-vlm>=0.7.0'
 ```
+
+### `ImportError: Layout detector dependencies are missing or incompatible`
+
+The SDK environment was installed without the `layout` extra. Reinstall with it:
+
+```bash
+pip install -e '.[layout]'
+```
+
+### `pipeline.layout.model_dir is required for self-hosted layout`
+
+Your `--config` file is missing `pipeline.layout.model_dir`. A custom config
+replaces the packaged defaults rather than merging with them, so it must be a
+full copy of `glmocr/config.yaml` with your edits applied — see
+[Step 4](#step-4---configure-the-sdk).
+
+### `API server returned status code: 400`
+
+The mlx-vlm server rejected the request, usually because `pipeline.ocr_api.model`
+does not match the model the server is serving. It must be the full Hugging Face
+id (e.g. `mlx-community/GLM-OCR-bf16`), not `glm-ocr`. Note that `config.yaml`
+has a second, unrelated `model:` key under `pipeline.maas` — make sure you edited
+the one under `pipeline.ocr_api`.
+
+### Output is missing rows, or two runs of the same file differ
+
+Set `pipeline.max_workers: 1`. Concurrent requests to the mlx-vlm server produce
+truncated and non-deterministic generations — see
+[Set `max_workers: 1`](#set-max_workers-1-important-for-mlx-vlm).
 
 ### `transformers` version conflict
 
