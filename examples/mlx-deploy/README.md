@@ -164,6 +164,36 @@ glmocr parse examples/source/code.png --config my_config.yaml
 
 Do **not** hand-write a minimal `--config` file from scratch.
 
+### Set `max_workers: 1` (important for mlx-vlm)
+
+The SDK issues one OCR request per detected region and, by default, runs up to
+`pipeline.max_workers` of them in parallel (`32` in the packaged config). The
+mlx-vlm server does not handle these concurrent vision requests safely: under
+concurrency, generations are **silently truncated and corrupted** — a region's
+output stops mid-number, repeats the wrong label, or drops a table row
+altogether. Nothing is logged; you simply get less text.
+
+```yaml
+pipeline:
+  max_workers: 1
+```
+
+Measured on a 194-file / 228-page invoice corpus (Apple M1 Pro, GLM-OCR-bf16):
+
+| `max_workers` | Correct invoice totals | Reproducible? |
+| ------------- | ---------------------- | ------------- |
+| `4`           | 91.3%                  | no            |
+| `1`           | ~96.6%                 | yes           |
+
+Concurrency also makes runs **non-deterministic** despite `temperature: 0.0`,
+`top_k: 1`. Of 10 byte-identical duplicate PDFs in that corpus, 7 produced
+different text at `max_workers: 4` (3 substantially). Re-parsing one file 4x
+gave a diverging result on the 4th run; at `max_workers: 1`, three consecutive
+runs were byte-identical.
+
+Since the mlx-vlm server processes requests sequentially anyway, `max_workers: 1`
+costs little throughput and removes the corruption.
+
 ### Full Configuration Reference
 
 Below is the `ocr_api` section with all available options and their defaults:
@@ -262,6 +292,12 @@ does not match the model the server is serving. It must be the full Hugging Face
 id (e.g. `mlx-community/GLM-OCR-bf16`), not `glm-ocr`. Note that `config.yaml`
 has a second, unrelated `model:` key under `pipeline.maas` — make sure you edited
 the one under `pipeline.ocr_api`.
+
+### Output is missing rows, or two runs of the same file differ
+
+Set `pipeline.max_workers: 1`. Concurrent requests to the mlx-vlm server produce
+truncated and non-deterministic generations — see
+[Set `max_workers: 1`](#set-max_workers-1-important-for-mlx-vlm).
 
 ### `transformers` version conflict
 
