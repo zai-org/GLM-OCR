@@ -152,7 +152,7 @@ class PageLoaderConfig(_BaseConfig):
     temperature: float = 0.0
     top_p: float = 0.00001
     top_k: int = 1
-    repetition_penalty: float = 1.1
+    repetition_penalty: float = 1.05
 
     t_patch_size: int = 2
     patch_expand_factor: int = 1

@@ -118,7 +118,12 @@ pipeline:
     temperature: 0.0
     top_p: 0.00001
     top_k: 1
-    repetition_penalty: 1.1
+    # NOTE: keep this <= 1.05. Values >= ~1.08 were observed to make the model
+    # hallucinate spurious trailing content on table regions (e.g. an extra
+    # fabricated row after a correctly-recognized table) -- see #240. This was
+    # deterministic and reproduced identically on both mlx_vlm (Apple Silicon)
+    # and vLLM (CUDA) backends across repeated identical calls.
+    repetition_penalty: 1.05
 
     # Image processing
     t_patch_size: 2
