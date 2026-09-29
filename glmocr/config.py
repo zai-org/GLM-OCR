@@ -262,6 +262,12 @@ class PipelineConfig(_BaseConfig):
     # Parallel recognition workers (VLM/API concurrent requests)
     max_workers: int = 16
 
+    # When false, skip document layout detection and OCR each loaded page as a
+    # single known region. This is useful for pre-cropped inputs such as table
+    # crops where the caller already knows the desired OCR task.
+    enable_layout: bool = True
+    direct_task_type: str = "text"
+
     # Queue sizes for async pipeline.
     page_maxsize: int = 100
     region_maxsize: Optional[int] = 800
@@ -281,6 +287,8 @@ def _coerce_env_value(dotted_path: str, raw: str) -> Any:
     # Boolean fields
     if dotted_path == "pipeline.maas.enabled":
         return raw.strip().lower() in ("maas", "true", "1", "yes")
+    if dotted_path == "pipeline.enable_layout":
+        return raw.strip().lower() in ("true", "1", "yes", "on")
     # Integer fields
     if dotted_path.endswith((".api_port", ".request_timeout", ".connect_timeout")):
         return int(raw)
@@ -456,6 +464,9 @@ class GlmOcrConfig(_BaseConfig):
             # Layout GPU binding
             "cuda_visible_devices": "pipeline.layout.cuda_visible_devices",
             "layout_device": "pipeline.layout.device",
+            # Direct OCR mode
+            "enable_layout": "pipeline.enable_layout",
+            "direct_task_type": "pipeline.direct_task_type",
         }
 
         # `model` is shared by both MaaS and self-hosted modes.

@@ -84,6 +84,8 @@ class GlmOcr:
         ocr_api_port: Optional[int] = None,
         cuda_visible_devices: Optional[str] = None,
         layout_device: Optional[str] = None,
+        enable_layout: Optional[bool] = None,
+        direct_task_type: Optional[str] = None,
         **kwargs: Any,
     ):
         """Initialize GlmOcr.
@@ -106,6 +108,10 @@ class GlmOcr:
             layout_device: Device for the layout model: ``"cpu"``, ``"cuda"``,
                 or ``"cuda:N"``.  Defaults to auto-detection via
                 ``cuda_visible_devices``.
+            enable_layout: In self-hosted mode, disable to OCR each loaded page
+                directly as one known region without loading layout detection.
+            direct_task_type: Task prompt to use when layout is disabled, e.g.
+                ``"table"`` for an isolated table crop.
         """
         # If an API key is available (constructor arg or env var), default to MaaS.
         # This ensures `GlmOcr()` with ZHIPU_API_KEY in env auto-selects MaaS
@@ -130,6 +136,8 @@ class GlmOcr:
             ocr_api_port=ocr_api_port,
             cuda_visible_devices=cuda_visible_devices,
             layout_device=layout_device,
+            enable_layout=enable_layout,
+            direct_task_type=direct_task_type,
             **kwargs,
         )
         # Apply logging config for API/SDK usage.
@@ -247,6 +255,8 @@ class GlmOcr:
             preserve_order: Whether to keep output order consistent with input order.
             **kwargs: Additional parameters for MaaS mode (return_crop_images,
                      need_layout_visualization, start_page_id, end_page_id, etc.)
+                     In self-hosted mode, supports ``enable_layout=False`` and
+                     ``direct_task_type="table"`` for known pre-cropped inputs.
 
         Returns:
             - ``stream=False``, single input → ``PipelineResult``
@@ -279,6 +289,8 @@ class GlmOcr:
                 images,
                 save_layout_visualization,
                 preserve_order=preserve_order,
+                enable_layout=kwargs.get("enable_layout"),
+                direct_task_type=kwargs.get("direct_task_type"),
             )
 
         return result_list[0] if _single else result_list
@@ -314,6 +326,8 @@ class GlmOcr:
             images,
             save_layout_visualization=save_layout_visualization,
             preserve_order=preserve_order,
+            enable_layout=kwargs.get("enable_layout"),
+            direct_task_type=kwargs.get("direct_task_type"),
         ):
             yield result
 
@@ -497,6 +511,8 @@ class GlmOcr:
         images: List[Union[str, bytes, Path]],
         save_layout_visualization: bool = True,
         preserve_order: bool = True,
+        enable_layout: Optional[bool] = None,
+        direct_task_type: Optional[str] = None,
     ) -> List[PipelineResult]:
         """Parse using self-hosted vLLM/SGLang pipeline."""
         request_data = self._build_selfhosted_request(images)
@@ -505,6 +521,8 @@ class GlmOcr:
                 request_data,
                 save_layout_visualization=save_layout_visualization,
                 preserve_order=preserve_order,
+                enable_layout=enable_layout,
+                direct_task_type=direct_task_type,
             )
         )
         return results
@@ -514,6 +532,8 @@ class GlmOcr:
         images: List[Union[str, bytes, Path]],
         save_layout_visualization: bool = True,
         preserve_order: bool = True,
+        enable_layout: Optional[bool] = None,
+        direct_task_type: Optional[str] = None,
     ) -> Generator[PipelineResult, None, None]:
         """Streaming variant of self-hosted parse()."""
         request_data = self._build_selfhosted_request(images)
@@ -521,6 +541,8 @@ class GlmOcr:
             request_data,
             save_layout_visualization=save_layout_visualization,
             preserve_order=preserve_order,
+            enable_layout=enable_layout,
+            direct_task_type=direct_task_type,
         ):
             yield result
 
@@ -641,6 +663,8 @@ def parse(
     timeout: Optional[int] = None,
     log_level: Optional[str] = None,
     env_file: Optional[str] = None,
+    enable_layout: Optional[bool] = None,
+    direct_task_type: Optional[str] = None,
     **kwargs: Any,
 ) -> Union[PipelineResult, List[PipelineResult], Generator[PipelineResult, None, None]]:
     """Convenience function: parse images or documents in one call.
@@ -676,6 +700,8 @@ def parse(
         mode:     ``"maas"`` or ``"selfhosted"``.
         timeout:  Request timeout in seconds.
         log_level: Logging level.
+        enable_layout: In self-hosted mode, disable layout detection.
+        direct_task_type: Task prompt used when layout is disabled.
     """
     with GlmOcr(
         config_path=config_path,
@@ -686,11 +712,15 @@ def parse(
         timeout=timeout,
         log_level=log_level,
         env_file=env_file,
+        enable_layout=enable_layout,
+        direct_task_type=direct_task_type,
     ) as parser:
         return parser.parse(
             images,
             stream=stream,
             save_layout_visualization=save_layout_visualization,
             preserve_order=preserve_order,
+            enable_layout=enable_layout,
+            direct_task_type=direct_task_type,
             **kwargs,
         )
