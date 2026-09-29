@@ -131,7 +131,7 @@ pipeline:
     # Task-specific prompts
     task_prompt_mapping:
       text: "Text Recognition:"
-      table: "Table Recognition:"
+      table: "Table Recognition: Preserve numeric punctuation exactly, including decimal and thousands separators."
       formula: "Formula Recognition:"
 
     # PDF processing

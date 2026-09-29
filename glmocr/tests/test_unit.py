@@ -347,6 +347,25 @@ class TestPageLoader:
         assert loader.max_tokens == 8192
         assert loader.image_format == "PNG"
 
+    def test_pageloader_table_prompt_preserves_numeric_punctuation(self):
+        """Table requests carry the packaged numeric-fidelity prompt."""
+        from PIL import Image
+
+        from glmocr.config import load_config
+        from glmocr.dataloader import PageLoader
+
+        cfg = load_config(mode="selfhosted").pipeline.page_loader
+        loader = PageLoader(cfg)
+        image = Image.new("RGB", (8, 8), color=(255, 255, 255))
+
+        request = loader.build_request_from_image(image, task_type="table")
+        content = request["messages"][0]["content"]
+        text_parts = [item["text"] for item in content if item.get("type") == "text"]
+
+        assert text_parts
+        assert "Preserve numeric punctuation exactly" in text_parts[0]
+        assert "decimal and thousands separators" in text_parts[0]
+
     def test_pageloader_load_pdf_pages(self):
         """Expands a PDF into page images."""
         from glmocr.config import PageLoaderConfig
