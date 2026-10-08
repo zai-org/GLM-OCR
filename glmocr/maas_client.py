@@ -247,7 +247,7 @@ class MaaSClient:
                 mime = _sniff_mime_from_bytes(decoded)
             except Exception:
                 mime = "application/octet-stream"
-            return _as_data_uri(mime, "".join(source_str.split()))
+            return _as_data_uri(mime, candidate)
 
         # If it's a file path, read and encode
         path = Path(source_str)
@@ -309,8 +309,8 @@ class MaaSClient:
             return False
 
         candidate = "".join(s.split())
-        if len(candidate) < 128:
-            return False
+        if candidate.startswith("<|base64|>"):
+            candidate = candidate[len("<|base64|>") :]
 
         # Reject obvious filenames/paths early.
         if candidate.startswith(("http://", "https://", "file://", "data:")):
@@ -329,8 +329,12 @@ class MaaSClient:
 
         try:
             # validate=True enforces correct alphabet.
-            base64.b64decode(candidate, validate=True)
-            return True
+            decoded = base64.b64decode(candidate, validate=True)
+            # Recognizable documents can be smaller than the generic heuristic.
+            # Keep short ordinary filenames from being mistaken for payloads.
+            return len(candidate) >= 128 or _sniff_mime_from_bytes(decoded) != (
+                "application/octet-stream"
+            )
         except Exception:
             return False
 
