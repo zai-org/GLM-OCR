@@ -27,7 +27,7 @@ import re
 from typing import Any, Dict, Generator, List, Literal, Optional, Union, overload
 from pathlib import Path
 
-from glmocr.config import load_config
+from glmocr.config import _collect_env_overrides, load_config
 from glmocr.parser_result import PipelineResult
 from glmocr.utils.logging import get_logger, ensure_logging_configured
 from glmocr.utils.markdown_utils import resolve_image_regions
@@ -114,7 +114,14 @@ class GlmOcr:
             os.environ.get("ZHIPU_API_KEY") or os.environ.get("GLMOCR_API_KEY")
         )
         if _has_api_key and mode is None:
-            mode = "maas"
+            env_mode = (
+                _collect_env_overrides(env_file=env_file)
+                .get("pipeline", {})
+                .get("maas", {})
+                .get("enabled")
+            )
+            if env_mode is None:
+                mode = "maas"
 
         # Build config: overrides > env vars > YAML > defaults
         self.config_model = load_config(
