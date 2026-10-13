@@ -9,13 +9,19 @@ from typing import Optional, List
 from datetime import datetime, UTC
 
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form, Response
-from mimetypes import guess_type
+from starlette.concurrency import run_in_threadpool
 
 from app.schemas.response import ApiResponse, TaskData, TaskResultData
 from app.core.task_manager import get_task_manager
 from app.utils.logger import logger
 from app.utils.upload_file_manager import file_upload_handler
 from app.utils.config import settings
+from app.utils.task_images import (
+    TaskImageNotFound,
+    image_id_from_path,
+    read_task_image,
+    validate_image_id,
+)
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -102,76 +108,51 @@ async def submit_task(
 
 @router.get("/file")
 async def read_file(path: str):
-    """
-    读取指定路径的文件内容
-
-    对于图片文件，直接返回图片数据
-    对于其他文件，返回JSON格式的文件信息
-
-    - **path**: 文件路径
-    """
+    """兼容旧结果中的图片链接；仅允许访问已完成任务的裁剪图片。"""
     try:
-        file_path = Path(path)
+        task_id, image_id = image_id_from_path(path)
+    except TaskImageNotFound:
+        raise HTTPException(status_code=404, detail="Image not found") from None
+    return await _task_image_response(task_id, image_id)
 
-        # 检查文件是否存在
-        if not file_path.exists():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File not found: {path}",
-            )
 
-        # 检查是否为文件
-        if not file_path.is_file():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Path is not a file: {path}",
-            )
+@router.get("/{task_id}/images/{image_id}")
+async def get_task_image(task_id: str, image_id: str):
+    """获取任务生成并登记的裁剪图片，不接受服务器文件路径。"""
+    return await _task_image_response(task_id, image_id)
 
-        # 获取文件MIME类型
-        mime_type, _ = guess_type(file_path.name)
-        if mime_type is None:
-            mime_type = "application/octet-stream"
 
-        # 读取文件内容
-        with open(file_path, "rb") as f:
-            content = f.read()
-
-        # 如果是图片文件，直接返回二进制数据
-        if mime_type.startswith("image/"):
-            return Response(
-                content=content,
-                media_type=mime_type,
-                headers={
-                    "Content-Disposition": f"inline; filename=\"{file_path.name}\""
-                }
-            )
-
-        # 其他文件类型，返回JSON格式
-        try:
-            text_content = content.decode("utf-8")
-        except UnicodeDecodeError:
-            text_content = "(binary file)"
-
-        return ApiResponse(
-            success=True,
-            data={
-                "path": str(file_path.absolute()),
-                "filename": file_path.name,
-                "size": file_path.stat().st_size,
-                "mime_type": mime_type,
-                "content": text_content,
+async def _task_image_response(task_id: str, image_id: str):
+    try:
+        validate_image_id(task_id, image_id)
+        task = await get_task_manager().get_task_status(task_id)
+        # Uploaded files cannot supply their own manifest before OCR completes.
+        if (
+            not task
+            or task.get("status") != "completed"
+            or not task.get("result_file_path")
+        ):
+            raise TaskImageNotFound
+        content = await run_in_threadpool(read_task_image, task_id, image_id)
+        return Response(
+            content=content,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": f'inline; filename="{image_id}"',
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "private, no-store",
             },
-            message="File read successfully",
         )
-
+    except TaskImageNotFound:
+        raise HTTPException(status_code=404, detail="Image not found") from None
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to read file: {e}")
+        logger.error(f"Failed to read task image: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to read file: {str(e)}",
-        )
+            detail="Failed to read task image",
+        ) from None
 
 
 @router.get("/{task_id}", response_model=ApiResponse[dict])

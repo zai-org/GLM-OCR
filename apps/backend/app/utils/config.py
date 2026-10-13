@@ -13,8 +13,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "OCR Task System"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     PORT: int = 8000
+    # Browser-reachable API base used in generated Markdown image links.
+    PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
 
     # 数据库配置
     DATABASE_URL: str = "sqlite+aiosqlite:///./tasks.db"

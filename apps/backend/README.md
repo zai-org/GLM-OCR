@@ -114,8 +114,10 @@ uv sync
 # 基础配置
 APP_NAME=OCR Task System
 DEBUG=False
-HOST=0.0.0.0
+HOST=127.0.0.1
 PORT=8000
+# 浏览器可访问的 API 地址，用于 OCR 结果中的图片链接
+PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 
 # 数据库
 DATABASE_URL=sqlite+aiosqlite:///./tasks.db
@@ -132,13 +134,46 @@ TASK_TIMEOUT=3600
 
 ```bash
 # 方式1：使用 uv
-uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 # 方式2：直接运行
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 访问 API 文档：http://localhost:8000/docs
+
+### 文件访问与部署边界
+
+图片预览接口为 `GET /api/v1/tasks/{task_id}/images/{image_id}`，仅返回已完成
+任务的 PNG 裁剪图片。图片必须位于 `OUTPUT_DIR/<task_id>/`，并且登记在该任务
+`ocr_result.json` 的 `ref_image_paths` 中。文件名、真实目录和 PNG 内容均会校验；
+符号链接、目录穿越、未登记图片、上传原件、配置、数据库和任意文本文件不可通过此接口读取。
+无效请求统一返回 `404 {"detail":"Image not found"}`，不返回服务器文件路径。
+
+旧结果中的 `GET /api/v1/tasks/file?path=...` 图片链接仍可使用，但执行完全相同的
+任务和产物校验，不再提供通用文件读取功能。保留旧任务时，需要一起保留任务数据库记录、
+裁剪图片和 `ocr_result.json`。新生成的 Markdown 使用图片 ID，不包含服务器绝对文件路径。
+
+本应用仍是共享工作区，没有内置用户登录和任务归属隔离。默认开发服务和 Docker 宿主端口
+仅绑定本机；容器内部仍监听 `0.0.0.0` 以供端口转发。若要对外服务，请通过统一鉴权的
+网关或反向代理开放前端及全部 API，并阻止用户绕过代理直连后端。多用户数据隔离还需要
+任务归属权限校验，不能将 UUID 当作授权凭证。
+
+反向代理部署时，将 `PUBLIC_API_BASE_URL` 配置为浏览器能够访问、且受到相同访问控制的
+API 地址（例如 `https://ocr.example.com/api/v1`）。图片使用 `<img src>` 加载，代理的
+认证方式需要支持图片请求，例如同源会话 Cookie。更改该配置只影响新生成的结果链接。
+
+### 安全回归测试
+
+在 `apps/backend` 目录、安装后端依赖的环境中运行：
+
+```bash
+python -m pytest tests
+```
+
+测试使用真实 FastAPI 路由、临时 SQLite 数据库及临时文件，不读取已有任务数据库。
+图片和 PDF 的上传、转换、裁剪、结果合并、新旧预览链接均参与测试；仅外部 OCR 模型
+响应使用固定样本，不需要 GPU 或在线模型服务。
 
 ## 📖 API 使用指南
 
@@ -235,7 +270,7 @@ docker build -t glm-ocr:latest .
 ```bash
 docker run -d \
   --name glm-ocr \
-  -p 8000:8000 \
+  -p 127.0.0.1:8000:8000 \
   -v $(pwd)/data:/backend/data \
   -e WORKER_COUNT=5 \
   glm-ocr:latest
@@ -282,8 +317,9 @@ uv add --dev pytest
 | 配置项 | 说明 | 默认值 |
 |-------|------|--------|
 | `APP_NAME` | 应用名称 | OCR Task System |
-| `HOST` | 监听地址 | 0.0.0.0 |
+| `HOST` | 直接启动时的监听地址 | 127.0.0.1 |
 | `PORT` | 监听端口 | 8000 |
+| `PUBLIC_API_BASE_URL` | 新结果图片链接使用的浏览器可访问 API 地址 | http://localhost:8000/api/v1 |
 | `DATABASE_URL` | 数据库连接 | sqlite+aiosqlite:///./tasks.db |
 | `OUTPUT_DIR` | 输出目录 | ./data |
 | `WORKER_COUNT` | Worker 数量 | 5 |

@@ -33,7 +33,7 @@ start_frontend() {
     # 启动新容器
     docker run -d \
         --name glm-ocr-frontend \
-        -p 3000:80 \
+        -p 127.0.0.1:3000:80 \
         --restart unless-stopped \
         glm-ocr-frontend:latest
 
@@ -54,7 +54,7 @@ start_backend() {
     # 启动新容器
     docker run -d \
         --name glm-ocr-backend \
-        -p 8000:8000 \
+        -p 127.0.0.1:8000:8000 \
         --restart unless-stopped \
         glm-ocr-backend:latest
 

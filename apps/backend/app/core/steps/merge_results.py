@@ -6,9 +6,12 @@ from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
 import json
 import os
+from html import escape
 
 from app.core.flows.base import ProcessingContext
 from app.utils.logger import logger
+from app.utils.config import settings
+from app.utils.task_images import TaskImageNotFound, image_id_from_path
 
 
 class MergeResultsStepInput:
@@ -99,19 +102,30 @@ async def _merge_to_markdown(
     result["metadata"] = context.metadata
     merge_res_layout = []
     total_pages = len(pages)
-    for i, page in enumerate(pages):
-        # page_num = page.get("page_number", i + 1)
+    for page in pages:
         layout = page.get("layout", {}).get("blocks", [])
-        for i, block in enumerate(layout):
+        for block in layout:
             text = block.get("content", "")
             layout_type = block.get("layout_type", "")
             if layout_type == "image":
-                img_name = block.get("image_path")
-                # 将相对路径转换为绝对路径
-                if img_name and not os.path.isabs(img_name):
-                    img_name = os.path.abspath(img_name)
-
-                text = f'<div style="text-align: center;"><img src="http://localhost:8000/api/v1/tasks/file?path={img_name}" alt="Image"/></div>\n'
+                try:
+                    image_path = block.get("image_path")
+                    if isinstance(image_path, str):
+                        image_path = os.path.abspath(image_path)
+                    task_id, image_id = image_id_from_path(image_path)
+                    if task_id != context.task_id:
+                        raise TaskImageNotFound
+                    image_url = (
+                        f"{settings.PUBLIC_API_BASE_URL.rstrip('/')}/tasks/"
+                        f"{task_id}/images/{image_id}"
+                    )
+                    text = (
+                        '<div style="text-align: center;">'
+                        f'<img src="{escape(image_url, quote=True)}" alt="Image"/></div>\n'
+                    )
+                except TaskImageNotFound:
+                    # Failed crops have no image_path; do not emit a broken URL.
+                    text = text or ""
             markdown_lines.append(f"{text}\n")
             merge_res_layout.append(
                 {
@@ -123,7 +137,7 @@ async def _merge_to_markdown(
             )
     if progress_callback:
         progress = 100.0
-        await progress_callback(progress, f"Merging page {i + 1}/{total_pages}")
+        await progress_callback(progress, f"Merged {total_pages} pages")
     result["full_markdown"] = "".join(markdown_lines)
     result["layout"] = merge_res_layout
     # 写入文件
