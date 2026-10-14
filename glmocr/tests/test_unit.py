@@ -38,6 +38,27 @@ class TestConfig:
         assert isinstance(layout.id2label, dict)
         assert layout.id2label
 
+    def test_pipeline_direct_ocr_defaults_are_publicly_configured(self):
+        """Direct OCR mode has documented config defaults."""
+        from glmocr.config import load_config
+
+        cfg = load_config(mode="selfhosted")
+        assert cfg.pipeline.enable_layout is True
+        assert cfg.pipeline.direct_task_type == "text"
+
+    def test_pipeline_direct_ocr_kwargs_override_config(self):
+        """Constructor/config kwargs can enable direct OCR before pipeline init."""
+        from glmocr.config import load_config
+
+        cfg = load_config(
+            mode="selfhosted",
+            enable_layout=False,
+            direct_task_type="table",
+        )
+        assert cfg.pipeline.maas.enabled is False
+        assert cfg.pipeline.enable_layout is False
+        assert cfg.pipeline.direct_task_type == "table"
+
 
 class TestLayoutDeviceUnit:
     """Unit tests for layout device selection and config plumbing (mocked)."""
@@ -347,6 +368,25 @@ class TestPageLoader:
         assert loader.max_tokens == 8192
         assert loader.image_format == "PNG"
 
+    def test_pageloader_table_prompt_preserves_numeric_punctuation(self):
+        """Table requests carry the packaged numeric-fidelity prompt."""
+        from PIL import Image
+
+        from glmocr.config import load_config
+        from glmocr.dataloader import PageLoader
+
+        cfg = load_config(mode="selfhosted").pipeline.page_loader
+        loader = PageLoader(cfg)
+        image = Image.new("RGB", (8, 8), color=(255, 255, 255))
+
+        request = loader.build_request_from_image(image, task_type="table")
+        content = request["messages"][0]["content"]
+        text_parts = [item["text"] for item in content if item.get("type") == "text"]
+
+        assert text_parts
+        assert "Preserve numeric punctuation exactly" in text_parts[0]
+        assert "decimal and thousands separators" in text_parts[0]
+
     def test_pageloader_load_pdf_pages(self):
         """Expands a PDF into page images."""
         from glmocr.config import PageLoaderConfig
@@ -574,6 +614,57 @@ class TestUtils:
         )
         assert isinstance(out_b64, str)
         base64.b64decode(out_b64 + "===")
+
+
+class TestPipelineDirectOcr:
+    """Tests for layout-disabled direct OCR mode."""
+
+    def test_pipeline_does_not_require_layout_detector_when_disabled(self):
+        """Direct OCR mode can initialize without loading layout dependencies."""
+        from glmocr.config import PipelineConfig
+        from glmocr.pipeline import Pipeline
+
+        cfg = PipelineConfig(enable_layout=False, direct_task_type="table")
+        pipeline = Pipeline(cfg)
+
+        assert pipeline.enable_layout is False
+        assert pipeline.direct_task_type == "table"
+        assert pipeline.layout_detector is None
+
+    def test_flush_direct_ocr_batch_enqueues_full_page_table_region(self):
+        """Direct OCR mode sends the whole loaded page as a table region."""
+        from PIL import Image
+
+        from glmocr.pipeline._common import IDENTIFIER_REGION
+        from glmocr.pipeline._state import PipelineState
+        from glmocr.pipeline._workers import _flush_direct_ocr_batch
+
+        image = Image.new("RGB", (32, 16), color=(255, 255, 255))
+        state = PipelineState()
+
+        _flush_direct_ocr_batch(
+            state,
+            batch_images=[image],
+            batch_page_indices=[7],
+            global_start_idx=3,
+            task_type="table",
+        )
+
+        assert state.layout_results_dict[7] == [
+            {
+                "index": 3,
+                "label": "table",
+                "score": 1.0,
+                "bbox_2d": [0, 0, 1000, 1000],
+                "polygon": None,
+                "task_type": "table",
+            }
+        ]
+        msg = state.region_queue.get_nowait()
+        assert msg["identifier"] == IDENTIFIER_REGION
+        assert msg["page_idx"] == 7
+        assert msg["cropped_image"] is image
+        assert msg["region"]["task_type"] == "table"
 
 
 class TestResultFormatter:
@@ -1477,6 +1568,27 @@ class TestGlmOcrParseStream:
             ["a.png", "b.png"],
             save_layout_visualization=False,
             preserve_order=True,
+            enable_layout=None,
+            direct_task_type=None,
+        )
+
+    def test_parse_stream_selfhosted_forwards_direct_ocr_kwargs(self):
+        """Self-hosted streaming exposes direct OCR controls."""
+        parser = self._make_glmocr_selfhosted()
+        list(
+            parser._parse_stream(
+                ["table.png"],
+                save_layout_visualization=False,
+                enable_layout=False,
+                direct_task_type="table",
+            )
+        )
+        parser._stream_parse_selfhosted.assert_called_once_with(
+            ["table.png"],
+            save_layout_visualization=False,
+            preserve_order=True,
+            enable_layout=False,
+            direct_task_type="table",
         )
 
 
@@ -1534,6 +1646,30 @@ class TestGlmOcrConstructor:
             parser = GlmOcr(mode="selfhosted", model="glm-ocr")
             assert parser._use_maas is False
             assert parser.config_model.pipeline.ocr_api.model == "glm-ocr"
+            parser.close()
+
+    def test_selfhosted_direct_ocr_kwargs_configure_pipeline(self, monkeypatch):
+        """enable_layout/direct_task_type are applied before Pipeline is built."""
+        from glmocr.config import _ENV_MAP, ENV_PREFIX
+
+        for suffix in _ENV_MAP:
+            monkeypatch.delenv(f"{ENV_PREFIX}{suffix}", raising=False)
+        monkeypatch.setattr("glmocr.config._find_dotenv", lambda: None)
+
+        with patch("glmocr.pipeline.Pipeline") as mock_pipeline:
+            mock_pipeline.return_value.start = MagicMock()
+            from glmocr.api import GlmOcr
+
+            parser = GlmOcr(
+                mode="selfhosted",
+                enable_layout=False,
+                direct_task_type="table",
+            )
+            assert parser._use_maas is False
+            assert parser.config_model.pipeline.enable_layout is False
+            assert parser.config_model.pipeline.direct_task_type == "table"
+            mock_pipeline.assert_called_once()
+            assert mock_pipeline.call_args.kwargs["config"].enable_layout is False
             parser.close()
 
 

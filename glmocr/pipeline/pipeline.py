@@ -3,9 +3,9 @@
 Three-stage async document parsing pipeline.  ``process()`` yields one
 ``PipelineResult`` per input unit (one image or one PDF).
 
-Stages (all always enabled):
+Stages:
   1. PageLoader   — load images / PDF pages
-  2. LayoutDetector — detect regions per page
+  2. LayoutDetector — detect regions per page, unless direct OCR mode is enabled
   3. OCRClient    — recognise each region via VLM
 
 Extension points:
@@ -84,8 +84,14 @@ class Pipeline:
             else ResultFormatter(config.result_formatter)
         )
 
+        self.enable_layout = bool(config.enable_layout)
+        self.direct_task_type = config.direct_task_type
+        self.layout_detector: Optional["BaseLayoutDetector"]
+
         if layout_detector is not None:
             self.layout_detector = layout_detector
+        elif not self.enable_layout:
+            self.layout_detector = None
         else:
             from glmocr.layout import PPDocLayoutDetector
 
@@ -112,6 +118,8 @@ class Pipeline:
         page_maxsize: Optional[int] = None,
         region_maxsize: Optional[int] = None,
         preserve_order: bool = True,
+        enable_layout: Optional[bool] = None,
+        direct_task_type: Optional[str] = None,
     ) -> Generator[PipelineResult, None, None]:
         """Process a request; yield one ``PipelineResult`` per input unit.
 
@@ -124,6 +132,9 @@ class Pipeline:
             page_maxsize: Bound for the page queue.
             region_maxsize: Bound for the region queue.
             preserve_order: Whether to emit results in input order.
+            enable_layout: Override layout detection for this request. When
+                false, each loaded page is sent directly to OCR as one region.
+            direct_task_type: OCR task type used when layout is disabled.
 
         Yields:
             One ``PipelineResult`` per input URL (image or PDF).
@@ -136,6 +147,14 @@ class Pipeline:
 
         num_units = len(image_sources)
         original_inputs = make_original_inputs(image_sources)
+        use_layout = self.enable_layout if enable_layout is None else enable_layout
+        task_type = direct_task_type or self.direct_task_type
+
+        if use_layout and self.layout_detector is None:
+            raise RuntimeError(
+                "Layout detection is not initialized. Create the pipeline with "
+                "enable_layout=True to use layout detection."
+            )
 
         state = PipelineState(
             page_maxsize=page_maxsize or self._page_maxsize,
@@ -158,6 +177,8 @@ class Pipeline:
                 self.layout_detector,
                 save_layout_visualization,
                 self.config.layout.use_polygon,
+                use_layout,
+                task_type,
             ),
             daemon=True,
         )
@@ -211,7 +232,8 @@ class Pipeline:
     def start(self):
         """Start the pipeline (layout detector + OCR client)."""
         logger.info("Starting Pipeline...")
-        self.layout_detector.start()
+        if self.layout_detector is not None:
+            self.layout_detector.start()
         self.ocr_client.start()
         logger.info("Pipeline started!")
 
@@ -219,7 +241,8 @@ class Pipeline:
         """Stop the pipeline."""
         logger.info("Stopping Pipeline...")
         self.ocr_client.stop()
-        self.layout_detector.stop()
+        if self.layout_detector is not None:
+            self.layout_detector.stop()
         logger.info("Pipeline stopped!")
 
     def __enter__(self):

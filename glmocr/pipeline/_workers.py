@@ -146,9 +146,11 @@ def data_loading_worker(
 
 def layout_worker(
     state: PipelineState,
-    layout_detector: "BaseLayoutDetector",
+    layout_detector: Optional["BaseLayoutDetector"],
     save_visualization: bool,
     use_polygon: bool = False,
+    enable_layout: bool = True,
+    direct_task_type: str = "text",
 ) -> None:
     """Consume pages, run layout detection in batches, push regions.
 
@@ -186,7 +188,8 @@ def layout_worker(
                     unit_page_indices[unit_idx] = []
                 unit_page_indices[unit_idx].append(msg["page_idx"])
 
-                if len(batch_images) >= layout_detector.batch_size:
+                batch_size = layout_detector.batch_size if enable_layout else 1
+                if len(batch_images) >= batch_size:
                     _flush_layout_batch(
                         state,
                         layout_detector,
@@ -195,6 +198,8 @@ def layout_worker(
                         save_visualization,
                         global_start_idx,
                         use_polygon=use_polygon,
+                        enable_layout=enable_layout,
+                        direct_task_type=direct_task_type,
                     )
                     global_start_idx += len(batch_page_indices)
                     for pi in batch_page_indices:
@@ -212,6 +217,8 @@ def layout_worker(
                         save_visualization,
                         global_start_idx,
                         use_polygon=use_polygon,
+                        enable_layout=enable_layout,
+                        direct_task_type=direct_task_type,
                     )
                     global_start_idx += len(batch_page_indices)
                     for pi in batch_page_indices:
@@ -240,6 +247,8 @@ def layout_worker(
                         save_visualization,
                         global_start_idx,
                         use_polygon=use_polygon,
+                        enable_layout=enable_layout,
+                        direct_task_type=direct_task_type,
                     )
                 state.safe_put(state.region_queue, {"identifier": IDENTIFIER_DONE})
                 break
@@ -253,14 +262,29 @@ def layout_worker(
 
 def _flush_layout_batch(
     state: PipelineState,
-    layout_detector: "BaseLayoutDetector",
+    layout_detector: Optional["BaseLayoutDetector"],
     batch_images: List[Any],
     batch_page_indices: List[int],
     save_visualization: bool,
     global_start_idx: int,
     use_polygon: bool = False,
+    enable_layout: bool = True,
+    direct_task_type: str = "text",
 ) -> None:
     """Run layout detection on one batch and enqueue the resulting regions."""
+    if not enable_layout:
+        _flush_direct_ocr_batch(
+            state,
+            batch_images,
+            batch_page_indices,
+            global_start_idx,
+            direct_task_type,
+        )
+        return
+
+    if layout_detector is None:
+        raise RuntimeError("layout_detector is required when enable_layout=True")
+
     try:
         layout_results, vis_images = layout_detector.process(
             batch_images,
@@ -308,6 +332,36 @@ def _flush_layout_batch(
                 },
             ):
                 return
+
+
+def _flush_direct_ocr_batch(
+    state: PipelineState,
+    batch_images: List[Any],
+    batch_page_indices: List[int],
+    global_start_idx: int,
+    task_type: str,
+) -> None:
+    """Treat each page as one caller-specified OCR region."""
+    for offset, (page_idx, image) in enumerate(zip(batch_page_indices, batch_images)):
+        region = {
+            "index": global_start_idx + offset,
+            "label": task_type,
+            "score": 1.0,
+            "bbox_2d": [0, 0, 1000, 1000],
+            "polygon": None,
+            "task_type": task_type,
+        }
+        state.layout_results_dict[page_idx] = [region]
+        if not state.safe_put(
+            state.region_queue,
+            {
+                "identifier": IDENTIFIER_REGION,
+                "page_idx": page_idx,
+                "cropped_image": image,
+                "region": region,
+            },
+        ):
+            return
 
 
 # ======================================================================

@@ -107,6 +107,14 @@ pipeline:
   # Maximum parallel workers for region recognition
   # Lower values to reduce 503 errors on busy OCR servers
   max_workers: 32
+
+  # Layout detection. Set enable_layout=false for pre-cropped inputs where the
+  # caller already knows the OCR task, then set direct_task_type to text, table,
+  # or formula. Example for an isolated table crop:
+  #   --set pipeline.enable_layout false --set pipeline.direct_task_type table
+  enable_layout: true
+  direct_task_type: text
+
   # Queue sizes
   page_maxsize: 100
   region_maxsize: 2000
@@ -131,7 +139,7 @@ pipeline:
     # Task-specific prompts
     task_prompt_mapping:
       text: "Text Recognition:"
-      table: "Table Recognition:"
+      table: "Table Recognition: Preserve numeric punctuation exactly, including decimal and thousands separators."
       formula: "Formula Recognition:"
 
     # PDF processing

@@ -126,8 +126,8 @@ def main():
     # Parse all images in a directory
   glmocr parse ./images/
 
-    # Disable layout detection (OCR-only): set pipeline.enable_layout=false
-    glmocr parse image.png --config my_config.yaml
+    # OCR a known table crop directly, without layout detection
+  glmocr parse table_crop.png --mode selfhosted --disable-layout --direct-task-type table
 
     # Specify output directory
   glmocr parse image.png --output ./output/
@@ -221,6 +221,18 @@ def main():
         help='Device for layout model: "cpu", "cuda", or "cuda:N" (default: auto)',
     )
     parse_parser.add_argument(
+        "--disable-layout",
+        action="store_true",
+        help="Self-hosted mode: OCR each loaded page directly as one region",
+    )
+    parse_parser.add_argument(
+        "--direct-task-type",
+        type=str,
+        default=None,
+        choices=["text", "table", "formula"],
+        help="OCR task type used with --disable-layout (default: config value)",
+    )
+    parse_parser.add_argument(
         "--set",
         nargs=2,
         action="append",
@@ -248,6 +260,10 @@ def main():
         dotted_overrides: dict = {}
         for key, value in args.config_overrides or []:
             dotted_overrides[key] = _auto_coerce(value)
+        if args.disable_layout:
+            dotted_overrides["pipeline.enable_layout"] = False
+        if args.direct_task_type is not None:
+            dotted_overrides["pipeline.direct_task_type"] = args.direct_task_type
 
         with GlmOcr(
             config_path=args.config,
