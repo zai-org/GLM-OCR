@@ -13,6 +13,8 @@
   📍 使用 GLM-OCR 的 <a href="https://docs.z.ai/guides/vlm/glm-ocr" target="_blank">API</a>
 </p>
 
+[![Papers with Code: SOTA on OmniDocBench v1.5](https://paperswithcode.co/api/v1/papers/2603.10910/leaderboard-badge.svg?eval=4956&live=1)](https://paperswithcode.co/benchmark/omnidocbench-v1-5?task=ocr&eval=4956)
+
 ### 模型介绍
 
 GLM-OCR 是一款面向复杂文档理解的多模态 OCR 模型，基于 GLM-V 编码器—解码器架构构建。它引入 Multi-Token Prediction（MTP）损失与稳定的全任务强化学习训练策略，以提升训练效率、识别精度与泛化能力。模型集成了在大规模图文数据上预训练的 CogViT 视觉编码器、带高效 token 下采样的轻量跨模态连接器，以及 GLM-0.5B 语言解码器。结合基于 PP-DocLayout-V3 的“两阶段”流程——先做版面分析，再进行并行识别——GLM-OCR 能在多样化文档布局下提供稳健且高质量的 OCR 表现。
