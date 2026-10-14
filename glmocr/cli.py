@@ -249,6 +249,7 @@ def main():
         for key, value in args.config_overrides or []:
             dotted_overrides[key] = _auto_coerce(value)
 
+        ocr_error_count = 0
         with GlmOcr(
             config_path=args.config,
             api_key=args.api_key,
@@ -288,6 +289,15 @@ def main():
                         else f"unit_{pbar.n + 1}"
                     )
                     pbar.update(1)
+
+                    result_data = result.to_dict()
+                    if "error" in result_data:
+                        ocr_error_count += 1
+                        tqdm.write(
+                            f"Failed: {file_name}: {result_data['error']}",
+                            file=sys.stderr,
+                        )
+                        continue
 
                     try:
                         if args.stdout:
@@ -331,6 +341,9 @@ def main():
                 stats_thread.join(timeout=2)
                 pbar.close()
 
+        if ocr_error_count:
+            logger.error("OCR failed for %d file(s).", ocr_error_count)
+            sys.exit(1)
         logger.info("All done!")
 
     except KeyboardInterrupt:

@@ -2653,3 +2653,189 @@ class TestMaaSClientServerProtocolRoundtrip:
                     content_type="application/json",
                 )
                 assert resp.status_code == 200
+
+
+class TestCliErrorResults:
+    """Exercise the CLI and SDK error conversion with an offline HTTP transport."""
+
+    def _run_cli(
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+        outcomes,
+        *,
+        preserve_index=None,
+        no_save=False,
+    ):
+        import sys
+        import threading
+
+        import requests
+        from PIL import Image
+
+        from glmocr import cli
+
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+        for index in range(len(outcomes)):
+            Image.new("RGB", (16, 16), "white").save(input_dir / f"page{index}.png")
+        if preserve_index is not None:
+            previous_dir = output_dir / f"page{preserve_index}"
+            previous_dir.mkdir(parents=True)
+            (previous_dir / f"page{preserve_index}.json").write_text(
+                '{"previous": true}', encoding="utf-8"
+            )
+            (previous_dir / f"page{preserve_index}.md").write_text(
+                "Previous recognized text", encoding="utf-8"
+            )
+
+        requests_seen = []
+        closed_sessions = []
+        threads = []
+        original_close = requests.Session.close
+        original_thread = threading.Thread
+
+        def post(session, url, **kwargs):
+            outcome = outcomes[len(requests_seen)]
+            requests_seen.append(url)
+            if isinstance(outcome, Exception):
+                raise outcome
+            response = requests.Response()
+            response.encoding = "utf-8"
+            response.status_code = 503 if outcome == "failure" else 200
+            payload = (
+                {"error": "Service unavailable"}
+                if outcome == "failure"
+                else {
+                    "md_results": "" if outcome == "empty" else "Recognized text",
+                    "layout_details": [],
+                    "data_info": {"pages": []},
+                }
+            )
+            response._content = json.dumps(payload).encode("utf-8")
+            return response
+
+        def reject_network(*args, **kwargs):
+            raise AssertionError("Unexpected real HTTP request")
+
+        def close(session):
+            closed_sessions.append(session)
+            return original_close(session)
+
+        def make_thread(*args, **kwargs):
+            thread = original_thread(*args, **kwargs)
+            threads.append(thread)
+            return thread
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("glmocr.config._find_dotenv", lambda: None)
+        monkeypatch.setattr(requests.Session, "post", post)
+        monkeypatch.setattr(requests.Session, "request", reject_network)
+        monkeypatch.setattr(requests.Session, "close", close)
+        monkeypatch.setattr(cli.threading, "Thread", make_thread)
+        argv = [
+            "glmocr",
+            "parse",
+            str(input_dir),
+            "--mode",
+            "maas",
+            "--api-key",
+            "test-key",
+            "--output",
+            str(output_dir),
+            "--stdout",
+            "--no-layout-vis",
+            "--set",
+            "pipeline.maas.retry_max_attempts",
+            "0",
+        ]
+        if no_save:
+            argv.append("--no-save")
+        monkeypatch.setattr(sys, "argv", argv)
+        exit_code = 0
+        try:
+            cli.main()
+        except SystemExit as exc:
+            exit_code = exc.code
+        captured = capsys.readouterr()
+        assert len(requests_seen) == len(outcomes)
+        assert closed_sessions
+        assert threads and all(not thread.is_alive() for thread in threads)
+        return exit_code, output_dir, captured
+
+    @pytest.mark.parametrize("outcome", ["success", "empty"])
+    def test_success_including_empty_result_keeps_zero_status(
+        self, tmp_path, monkeypatch, capsys, outcome
+    ):
+        exit_code, output_dir, captured = self._run_cli(
+            tmp_path, monkeypatch, capsys, [outcome]
+        )
+        assert exit_code == 0
+        assert (output_dir / "page0" / "page0.json").read_text() == "[]"
+        assert "page0 - JSON Result" in captured.out
+        assert "Failed:" not in captured.err
+
+    @pytest.mark.parametrize("failed_index", [0, 1, 2])
+    def test_http_failure_preserves_existing_files_and_continues_batch(
+        self, tmp_path, monkeypatch, capsys, failed_index
+    ):
+        outcomes = ["success", "success", "success"]
+        outcomes[failed_index] = "failure"
+        exit_code, output_dir, captured = self._run_cli(
+            tmp_path,
+            monkeypatch,
+            capsys,
+            outcomes,
+            preserve_index=failed_index,
+        )
+        assert exit_code == 1
+        failed_stem = f"page{failed_index}"
+        assert (output_dir / failed_stem / f"{failed_stem}.json").read_text() == (
+            '{"previous": true}'
+        )
+        assert (output_dir / failed_stem / f"{failed_stem}.md").read_text() == (
+            "Previous recognized text"
+        )
+        assert f"{failed_stem} - JSON Result" not in captured.out
+        assert f"Failed: {failed_stem}.png:" in captured.err
+        for index in range(3):
+            if index != failed_index:
+                assert (output_dir / f"page{index}" / f"page{index}.md").read_text()
+                assert f"page{index} - JSON Result" in captured.out
+
+    @pytest.mark.parametrize("message", ["Request timed out", ""])
+    def test_timeout_including_empty_error_message_does_not_save_failure(
+        self, tmp_path, monkeypatch, capsys, message
+    ):
+        import requests
+
+        exit_code, output_dir, captured = self._run_cli(
+            tmp_path, monkeypatch, capsys, [requests.Timeout(message)]
+        )
+        assert exit_code == 1
+        assert not output_dir.exists()
+        assert "JSON Result" not in captured.out
+        assert "Failed: page0.png:" in captured.err
+
+    def test_no_save_still_reports_failed_batch(self, tmp_path, monkeypatch, capsys):
+        exit_code, output_dir, captured = self._run_cli(
+            tmp_path, monkeypatch, capsys, ["failure", "success"], no_save=True
+        )
+        assert exit_code == 1
+        assert not output_dir.exists()
+        assert "page0 - JSON Result" not in captured.out
+        assert "page1 - JSON Result" in captured.out
+        assert "Failed: page0.png:" in captured.err
+
+    def test_reports_the_number_of_ocr_error_results(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        exit_code, output_dir, captured = self._run_cli(
+            tmp_path, monkeypatch, capsys, ["failure", "failure"]
+        )
+        assert exit_code == 1
+        assert not output_dir.exists()
+        assert "JSON Result" not in captured.out
+        assert "OCR failed for 2 file(s)." in captured.err
